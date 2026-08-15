@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - "agent/**"
   pull_request:
   workflow_dispatch:
 
@@ -94,18 +93,12 @@ jobs:
           --lib
           --locked
           --summary-only
+          --show-missing-lines
           --fail-under-lines 99
           --fail-under-functions 99
           --fail-under-regions 99
       - name: Generate LCOV report
-        run: >
-          cargo llvm-cov
-          --workspace
-          --all-features
-          --lib
-          --locked
-          --lcov
-          --output-path lcov.info
+        run: cargo llvm-cov report --lcov --output-path lcov.info
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         with:

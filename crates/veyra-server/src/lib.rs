@@ -5,6 +5,7 @@
 //! The server is intentionally separate from BEAM/NIF execution. A Veyra process crash
 //! therefore cannot directly crash the Elixir VM.
 
+use std::future::Future;
 use std::io;
 
 use axum::extract::State;
@@ -52,9 +53,18 @@ pub fn bootstrap_runtime() -> RuntimeState {
     ))
 }
 
-/// Serves the administrative router on an already-bound listener.
-pub async fn serve(listener: TcpListener, runtime: RuntimeState) -> io::Result<()> {
-    axum::serve(listener, router(runtime)).await
+/// Serves the administrative router until `shutdown` resolves.
+///
+/// A graceful shutdown boundary is part of the public server contract so tests and
+/// production supervisors can prove that listener shutdown completes without aborting
+/// the process or exposing a half-mutated runtime state.
+pub async fn serve<F>(listener: TcpListener, runtime: RuntimeState, shutdown: F) -> io::Result<()>
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    axum::serve(listener, router(runtime))
+        .with_graceful_shutdown(shutdown)
+        .await
 }
 
 async fn liveness(State(runtime): State<RuntimeState>) -> (StatusCode, Json<HealthResponse>) {
@@ -148,14 +158,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn serve_runs_on_an_existing_listener() -> io::Result<()> {
+    async fn serve_completes_cleanly_after_shutdown_signal() -> io::Result<()> {
         let listener = TcpListener::bind("127.0.0.1:0").await?;
-        let task = tokio::spawn(serve(listener, bootstrap_runtime()));
 
-        tokio::task::yield_now().await;
-        task.abort();
-        assert!(task.await.is_err());
-        Ok(())
+        serve(listener, bootstrap_runtime(), async {}).await
     }
 
     #[test]

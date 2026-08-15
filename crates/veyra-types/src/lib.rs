@@ -208,12 +208,14 @@ mod tests {
         assert_eq!(newer.checked_distance_from(older), Some(30));
         assert_eq!(older.checked_distance_from(newer), None);
         assert_eq!(LogSequenceNumber::ZERO.get(), 0);
+        assert_eq!(LogSequenceNumber::default(), LogSequenceNumber::ZERO);
     }
 
     #[test]
     fn generation_round_trips() {
         assert_eq!(GenerationId::UNPUBLISHED.get(), 0);
         assert_eq!(GenerationId::new(9).get(), 9);
+        assert_eq!(GenerationId::default(), GenerationId::UNPUBLISHED);
     }
 
     #[test]

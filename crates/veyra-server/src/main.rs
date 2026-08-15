@@ -4,7 +4,7 @@ use std::error::Error;
 use std::net::SocketAddr;
 
 use tokio::net::TcpListener;
-use tracing::info;
+use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 use veyra_server::{bootstrap_runtime, serve};
 
@@ -21,6 +21,12 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let local_address = listener.local_addr()?;
 
     info!(%local_address, "Veyra administrative server listening");
-    serve(listener, bootstrap_runtime()).await?;
+    serve(listener, bootstrap_runtime(), shutdown_signal()).await?;
     Ok(())
+}
+
+async fn shutdown_signal() {
+    if let Err(error) = tokio::signal::ctrl_c().await {
+        error!(%error, "failed to install shutdown signal handler");
+    }
 }
