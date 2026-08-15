@@ -97,8 +97,23 @@ fn health_response(snapshot: &RuntimeSnapshot) -> HealthResponse {
 
 #[cfg(test)]
 mod tests {
+    use axum::body::Body;
+    use axum::http::{Request, Uri};
+    use tower::ServiceExt;
+
     use super::*;
     use veyra_runtime::CannotProveReason;
+
+    #[tokio::test]
+    async fn router_routes_liveness_request() {
+        let mut request = Request::new(Body::empty());
+        *request.uri_mut() = Uri::from_static("/health/live");
+
+        let result = router(bootstrap_runtime()).oneshot(request).await;
+        let status = result.as_ref().map(axum::response::Response::status);
+
+        assert_eq!(status, Ok(StatusCode::OK));
+    }
 
     #[tokio::test]
     async fn liveness_is_ok_even_while_starting() {

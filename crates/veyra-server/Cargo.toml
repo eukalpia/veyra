@@ -16,5 +16,8 @@ tracing-subscriber.workspace = true
 veyra-runtime = { version = "0.1.0", path = "../veyra-runtime" }
 veyra-types = { version = "0.1.0", path = "../veyra-types" }
 
+[dev-dependencies]
+tower.workspace = true
+
 [lints]
 workspace = true
