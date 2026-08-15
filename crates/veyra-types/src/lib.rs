@@ -3,12 +3,12 @@
 //! Stable, allocation-free value types shared across Veyra.
 //!
 //! This crate deliberately owns only semantics that are independent from storage,
-//! networking, or PostgreSQL client libraries.
+//! networking, or `PostgreSQL` client libraries.
 
 use core::fmt;
 use serde::{Deserialize, Serialize};
 
-/// PostgreSQL log sequence number represented as the canonical unsigned 64-bit value.
+/// `PostgreSQL` log sequence number represented as the canonical unsigned 64-bit value.
 #[derive(
     Clone, Copy, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
 )]
@@ -120,7 +120,7 @@ impl ProjectionProgress {
         })
     }
 
-    /// WAL position received from PostgreSQL.
+    /// WAL position received from `PostgreSQL`.
     #[must_use]
     pub const fn received(self) -> LogSequenceNumber {
         self.received

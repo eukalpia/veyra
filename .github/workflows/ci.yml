@@ -18,15 +18,51 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
+  VEYRA_RUST_VERSION: "1.97.1"
 
 jobs:
+  commit-lockfiles:
+    name: Commit lockfiles (bootstrap)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/agent/m0-foundation-ci'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref_name }}
+      - name: Detect existing committed lockfiles
+        id: lock-state
+        shell: bash
+        run: |
+          if git ls-files --error-unmatch Cargo.lock fuzz/Cargo.lock >/dev/null 2>&1; then
+            echo "tracked=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tracked=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Install pinned stable Rust
+        if: steps.lock-state.outputs.tracked != 'true'
+        run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal
+      - name: Generate and commit lockfiles
+        if: steps.lock-state.outputs.tracked != 'true'
+        shell: bash
+        run: |
+          cargo generate-lockfile
+          (cd fuzz && cargo generate-lockfile)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock fuzz/Cargo.lock
+          git diff --cached --quiet && exit 0
+          git commit -m "build: commit Cargo lockfiles"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
   lockfile:
     name: Generate lockfiles
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
-      - name: Install stable Rust
-        run: rustup toolchain install stable --profile minimal
+      - name: Install pinned stable Rust
+        run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal
       - name: Generate workspace lockfile
         run: cargo generate-lockfile
       - name: Generate fuzz lockfile
@@ -61,8 +97,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v6
-      - name: Install stable Rust
-        run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+      - name: Install pinned stable Rust
+        run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal --component rustfmt --component clippy
       - name: Generate deterministic dependency lock
         run: cargo generate-lockfile
       - name: Format
@@ -77,8 +113,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
-      - name: Install stable Rust
-        run: rustup toolchain install stable --profile minimal
+      - name: Install pinned stable Rust
+        run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal
       - name: Generate deterministic dependency lock
         run: cargo generate-lockfile
       - name: Install cargo-nextest
@@ -91,8 +127,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
-      - name: Install stable Rust with coverage tools
-        run: rustup toolchain install stable --profile minimal --component llvm-tools-preview
+      - name: Install pinned stable Rust with coverage tools
+        run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal --component llvm-tools-preview
       - name: Generate deterministic dependency lock
         run: cargo generate-lockfile
       - name: Install cargo-llvm-cov
@@ -120,8 +156,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
-      - name: Install stable Rust
-        run: rustup toolchain install stable --profile minimal
+      - name: Install pinned stable Rust
+        run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal
       - name: Generate deterministic dependency lock
         run: cargo generate-lockfile
       - name: Install cargo-deny
@@ -140,8 +176,8 @@ jobs:
       RUSTDOCFLAGS: "-D warnings"
     steps:
       - uses: actions/checkout@v6
-      - name: Install stable Rust
-        run: rustup toolchain install stable --profile minimal
+      - name: Install pinned stable Rust
+        run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal
       - name: Generate deterministic dependency lock
         run: cargo generate-lockfile
       - name: Build documentation

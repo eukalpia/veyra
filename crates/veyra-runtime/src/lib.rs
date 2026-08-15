@@ -20,7 +20,7 @@ pub enum ServicePhase {
     Starting,
     /// Projection is valid and query admission may proceed.
     Ready,
-    /// Process is alive, but affected queries must use PostgreSQL fallback.
+    /// Process is alive, but affected queries must use `PostgreSQL` fallback.
     Degraded,
     /// Runtime encountered a fatal condition and must not serve Veyra results.
     Failed,
@@ -288,7 +288,7 @@ mod tests {
     }
 
     #[test]
-    fn every_cannot_prove_reason_is_serializable_and_distinct() {
+    fn every_cannot_prove_reason_is_distinct() {
         let reasons = [
             CannotProveReason::NotReady,
             CannotProveReason::StaleProjection,
