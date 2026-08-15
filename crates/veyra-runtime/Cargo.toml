@@ -10,7 +10,7 @@ authors.workspace = true
 [dependencies]
 arc-swap.workspace = true
 serde.workspace = true
-veyra-types = { path = "../veyra-types" }
+veyra-types = { version = "0.1.0", path = "../veyra-types" }
 
 [dev-dependencies]
 criterion.workspace = true
