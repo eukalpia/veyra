@@ -6,7 +6,7 @@ on:
       - agent/m1-cdc
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: m1-lock-bootstrap-${{ github.ref }}
@@ -16,22 +16,23 @@ env:
   VEYRA_RUST_VERSION: "1.97.1"
 
 jobs:
-  generate:
+  generate-and-finalize:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: agent/m1-cdc
       - name: Install pinned stable Rust
         run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal
-      - name: Generate workspace lockfile
-        run: cargo generate-lockfile
-      - name: Generate fuzz lockfile
-        working-directory: fuzz
-        run: cargo generate-lockfile
-      - name: Upload generated lockfiles
-        uses: actions/upload-artifact@v4
-        with:
-          name: m1-lockfiles
-          path: |
-            Cargo.lock
-            fuzz/Cargo.lock
-          if-no-files-found: error
+      - name: Generate exact lockfiles
+        run: |
+          cargo generate-lockfile
+          (cd fuzz && cargo generate-lockfile)
+      - name: Commit generated lockfiles and remove bootstrap
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock fuzz/Cargo.lock
+          git rm .github/workflows/lock-bootstrap.yml
+          git commit -m "build: lock M1 dependency graph"
+          git push origin HEAD:agent/m1-cdc
