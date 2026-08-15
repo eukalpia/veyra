@@ -260,11 +260,23 @@ impl TransactionBatch {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BatchValidationError {
     WalEndBeforeStart,
-    ItemTooLarge { actual: usize, maximum: usize },
-    PrefixTooLarge { actual: usize, maximum: usize },
-    TooManyItems { actual: usize, maximum: usize },
+    ItemTooLarge {
+        actual: usize,
+        maximum: usize,
+    },
+    PrefixTooLarge {
+        actual: usize,
+        maximum: usize,
+    },
+    TooManyItems {
+        actual: usize,
+        maximum: usize,
+    },
     EncodedLengthOverflow,
-    EncodedTooLarge { actual: usize, maximum: usize },
+    EncodedTooLarge {
+        actual: usize,
+        maximum: usize,
+    },
     CommitLsnMismatch {
         begin_final_lsn: LogSequenceNumber,
         commit_lsn: LogSequenceNumber,
@@ -275,19 +287,35 @@ pub enum BatchValidationError {
 impl fmt::Display for BatchValidationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::WalEndBeforeStart => formatter.write_str("WAL chunk end LSN precedes its start LSN"),
+            Self::WalEndBeforeStart => {
+                formatter.write_str("WAL chunk end LSN precedes its start LSN")
+            }
             Self::ItemTooLarge { actual, maximum } => {
-                write!(formatter, "transaction item is {actual} bytes; maximum is {maximum}")
+                write!(
+                    formatter,
+                    "transaction item is {actual} bytes; maximum is {maximum}"
+                )
             }
             Self::PrefixTooLarge { actual, maximum } => {
-                write!(formatter, "logical message prefix is {actual} bytes; maximum is {maximum}")
+                write!(
+                    formatter,
+                    "logical message prefix is {actual} bytes; maximum is {maximum}"
+                )
             }
             Self::TooManyItems { actual, maximum } => {
-                write!(formatter, "transaction has {actual} items; maximum is {maximum}")
+                write!(
+                    formatter,
+                    "transaction has {actual} items; maximum is {maximum}"
+                )
             }
-            Self::EncodedLengthOverflow => formatter.write_str("transaction encoded length overflow"),
+            Self::EncodedLengthOverflow => {
+                formatter.write_str("transaction encoded length overflow")
+            }
             Self::EncodedTooLarge { actual, maximum } => {
-                write!(formatter, "transaction payload is {actual} bytes; maximum is {maximum}")
+                write!(
+                    formatter,
+                    "transaction payload is {actual} bytes; maximum is {maximum}"
+                )
             }
             Self::CommitLsnMismatch {
                 begin_final_lsn,
@@ -493,28 +521,50 @@ mod tests {
             BatchValidationError::WalEndBeforeStart.to_string(),
             "WAL chunk end LSN precedes its start LSN"
         );
-        assert!(BatchValidationError::ItemTooLarge { actual: 2, maximum: 1 }
+        assert!(
+            BatchValidationError::ItemTooLarge {
+                actual: 2,
+                maximum: 1
+            }
             .to_string()
-            .contains("2 bytes"));
-        assert!(BatchValidationError::PrefixTooLarge { actual: 2, maximum: 1 }
+            .contains("2 bytes")
+        );
+        assert!(
+            BatchValidationError::PrefixTooLarge {
+                actual: 2,
+                maximum: 1
+            }
             .to_string()
-            .contains("prefix is 2 bytes"));
-        assert!(BatchValidationError::TooManyItems { actual: 2, maximum: 1 }
+            .contains("prefix is 2 bytes")
+        );
+        assert!(
+            BatchValidationError::TooManyItems {
+                actual: 2,
+                maximum: 1
+            }
             .to_string()
-            .contains("2 items"));
+            .contains("2 items")
+        );
         assert_eq!(
             BatchValidationError::EncodedLengthOverflow.to_string(),
             "transaction encoded length overflow"
         );
-        assert!(BatchValidationError::EncodedTooLarge { actual: 2, maximum: 1 }
+        assert!(
+            BatchValidationError::EncodedTooLarge {
+                actual: 2,
+                maximum: 1
+            }
             .to_string()
-            .contains("payload is 2 bytes"));
-        assert!(BatchValidationError::CommitLsnMismatch {
-            begin_final_lsn: LogSequenceNumber::new(2),
-            commit_lsn: LogSequenceNumber::new(1),
-        }
-        .to_string()
-        .contains("2 differs"));
+            .contains("payload is 2 bytes")
+        );
+        assert!(
+            BatchValidationError::CommitLsnMismatch {
+                begin_final_lsn: LogSequenceNumber::new(2),
+                commit_lsn: LogSequenceNumber::new(1),
+            }
+            .to_string()
+            .contains("2 differs")
+        );
         assert_eq!(
             BatchValidationError::EndBeforeCommit.to_string(),
             "transaction end LSN precedes commit LSN"

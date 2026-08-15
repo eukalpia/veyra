@@ -114,13 +114,8 @@ impl CdcAssembler {
                 if pending.items.len() >= self.limits.max_items {
                     return Err(AssemblerError::TooManyItems);
                 }
-                let chunk = WalChunk::try_new(
-                    wal_start,
-                    wal_end,
-                    server_time_micros,
-                    data,
-                    self.limits,
-                )?;
+                let chunk =
+                    WalChunk::try_new(wal_start, wal_end, server_time_micros, data, self.limits)?;
                 pending.items.push(TransactionItem::Wal(chunk));
                 Ok(AssemblerAction::WalObserved(wal_end))
             }
@@ -204,19 +199,29 @@ impl fmt::Display for AssemblerError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NestedBegin => formatter.write_str("nested PostgreSQL BEGIN in logical stream"),
-            Self::WalOutsideTransaction => formatter.write_str("PostgreSQL WAL data outside transaction"),
-            Self::MessageOutsideTransaction => formatter.write_str("transactional logical message outside transaction"),
+            Self::WalOutsideTransaction => {
+                formatter.write_str("PostgreSQL WAL data outside transaction")
+            }
+            Self::MessageOutsideTransaction => {
+                formatter.write_str("transactional logical message outside transaction")
+            }
             Self::NonTransactionalLogicalMessage => {
                 formatter.write_str("non-transactional logical messages are unsupported")
             }
             Self::CommitWithoutBegin => formatter.write_str("PostgreSQL COMMIT without BEGIN"),
-            Self::StoppedInsideTransaction => formatter.write_str("replication stopped inside incomplete transaction"),
-            Self::TooManyItems => formatter.write_str("transaction item limit reached before COMMIT"),
+            Self::StoppedInsideTransaction => {
+                formatter.write_str("replication stopped inside incomplete transaction")
+            }
+            Self::TooManyItems => {
+                formatter.write_str("transaction item limit reached before COMMIT")
+            }
             Self::CommitTimeMismatch { begin, commit } => write!(
                 formatter,
                 "BEGIN commit time {begin} differs from COMMIT time {commit}"
             ),
-            Self::InvalidBatch(error) => write!(formatter, "invalid committed transaction: {error}"),
+            Self::InvalidBatch(error) => {
+                write!(formatter, "invalid committed transaction: {error}")
+            }
         }
     }
 }
@@ -277,7 +282,8 @@ mod tests {
     }
 
     #[test]
-    fn keepalive_and_stop_are_visible_without_mutating_transaction_state() -> Result<(), AssemblerError> {
+    fn keepalive_and_stop_are_visible_without_mutating_transaction_state()
+    -> Result<(), AssemblerError> {
         let mut assembler = CdcAssembler::new(BatchLimits::default());
         assert_eq!(
             assembler.push(CdcEvent::KeepAlive {
@@ -328,7 +334,10 @@ mod tests {
     #[test]
     fn invalid_sequences_fail_closed() -> Result<(), AssemblerError> {
         let mut assembler = CdcAssembler::new(BatchLimits::default());
-        assert_eq!(assembler.push(commit()), Err(AssemblerError::CommitWithoutBegin));
+        assert_eq!(
+            assembler.push(commit()),
+            Err(AssemblerError::CommitWithoutBegin)
+        );
         assert_eq!(
             assembler.push(CdcEvent::XLogData {
                 wal_start: LogSequenceNumber::ZERO,
@@ -384,7 +393,10 @@ mod tests {
                 end_lsn: LogSequenceNumber::new(11),
                 commit_time_micros: 8,
             }),
-            Err(AssemblerError::CommitTimeMismatch { begin: 7, commit: 8 })
+            Err(AssemblerError::CommitTimeMismatch {
+                begin: 7,
+                commit: 8
+            })
         );
         Ok(())
     }
@@ -399,14 +411,21 @@ mod tests {
             AssemblerError::CommitWithoutBegin,
             AssemblerError::StoppedInsideTransaction,
             AssemblerError::TooManyItems,
-            AssemblerError::CommitTimeMismatch { begin: 1, commit: 2 },
+            AssemblerError::CommitTimeMismatch {
+                begin: 1,
+                commit: 2,
+            },
         ];
         for error in simple {
             assert!(!error.to_string().is_empty());
             assert!(std::error::Error::source(&error).is_none());
         }
         let invalid = AssemblerError::InvalidBatch(BatchValidationError::EndBeforeCommit);
-        assert!(invalid.to_string().contains("invalid committed transaction"));
+        assert!(
+            invalid
+                .to_string()
+                .contains("invalid committed transaction")
+        );
         assert!(std::error::Error::source(&invalid).is_some());
     }
 }

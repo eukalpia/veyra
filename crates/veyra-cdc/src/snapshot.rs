@@ -85,7 +85,8 @@ pub async fn begin_consistent_snapshot<'a>(
         .ok_or_else(|| SnapshotError::SlotNotFound(slot.to_owned()))?;
 
     let replay_text: Option<String> = row.try_get(0)?;
-    let replay_text = replay_text.ok_or_else(|| SnapshotError::SlotHasNoRestartLsn(slot.to_owned()))?;
+    let replay_text =
+        replay_text.ok_or_else(|| SnapshotError::SlotHasNoRestartLsn(slot.to_owned()))?;
     let replay_from_lsn = parse_pg_lsn(&replay_text)?;
 
     let transaction = client
@@ -123,10 +124,10 @@ pub fn parse_pg_lsn(value: &str) -> Result<LogSequenceNumber, SnapshotError> {
     if high.is_empty() || low.is_empty() {
         return Err(SnapshotError::InvalidLsn(value.to_owned()));
     }
-    let high = u64::from_str_radix(high, 16)
-        .map_err(|_| SnapshotError::InvalidLsn(value.to_owned()))?;
-    let low = u64::from_str_radix(low, 16)
-        .map_err(|_| SnapshotError::InvalidLsn(value.to_owned()))?;
+    let high =
+        u64::from_str_radix(high, 16).map_err(|_| SnapshotError::InvalidLsn(value.to_owned()))?;
+    let low =
+        u64::from_str_radix(low, 16).map_err(|_| SnapshotError::InvalidLsn(value.to_owned()))?;
     if high > u64::from(u32::MAX) || low > u64::from(u32::MAX) {
         return Err(SnapshotError::InvalidLsn(value.to_owned()));
     }
@@ -154,9 +155,14 @@ impl fmt::Display for SnapshotError {
         match self {
             Self::Postgres(error) => write!(formatter, "PostgreSQL snapshot error: {error}"),
             Self::EmptySlotName => formatter.write_str("logical replication slot name is empty"),
-            Self::SlotNotFound(slot) => write!(formatter, "logical replication slot '{slot}' was not found"),
+            Self::SlotNotFound(slot) => {
+                write!(formatter, "logical replication slot '{slot}' was not found")
+            }
             Self::SlotHasNoRestartLsn(slot) => {
-                write!(formatter, "logical replication slot '{slot}' has no restart LSN")
+                write!(
+                    formatter,
+                    "logical replication slot '{slot}' has no restart LSN"
+                )
             }
             Self::InvalidLsn(value) => write!(formatter, "invalid PostgreSQL LSN '{value}'"),
         }
@@ -192,8 +198,20 @@ mod tests {
 
     #[test]
     fn invalid_lsn_text_fails_closed() {
-        for value in ["", "0", "/1", "1/", "GG/1", "1/GG", "100000000/0", "0/100000000"] {
-            assert!(matches!(parse_pg_lsn(value), Err(SnapshotError::InvalidLsn(_))));
+        for value in [
+            "",
+            "0",
+            "/1",
+            "1/",
+            "GG/1",
+            "1/GG",
+            "100000000/0",
+            "0/100000000",
+        ] {
+            assert!(matches!(
+                parse_pg_lsn(value),
+                Err(SnapshotError::InvalidLsn(_))
+            ));
         }
     }
 

@@ -32,10 +32,7 @@ impl CdcProgressTracker {
     }
 
     /// Records the greatest WAL coordinate observed from PostgreSQL.
-    pub fn observe_received(
-        &mut self,
-        lsn: LogSequenceNumber,
-    ) -> Result<(), CdcProgressError> {
+    pub fn observe_received(&mut self, lsn: LogSequenceNumber) -> Result<(), CdcProgressError> {
         let received = self.progress.received().max(lsn);
         self.progress = ProjectionProgress::try_new(
             received,
@@ -202,7 +199,11 @@ mod tests {
         let projection = CdcProgressError::Projection(
             veyra_types::ProjectionProgressError::AppliedAheadOfDurable,
         );
-        assert!(projection.to_string().contains("invalid projection progress"));
+        assert!(
+            projection
+                .to_string()
+                .contains("invalid projection progress")
+        );
         assert!(std::error::Error::source(&projection).is_some());
         let applied = CdcProgressError::AppliedAheadOfDurable {
             attempted: LogSequenceNumber::new(2),

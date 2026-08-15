@@ -44,7 +44,10 @@ pub struct DurableCdcLog {
 
 impl DurableCdcLog {
     /// Opens, validates and repairs only an incomplete final append.
-    pub fn open(path: impl AsRef<Path>, limits: BatchLimits) -> Result<(Self, OpenOutcome), DurableLogError> {
+    pub fn open(
+        path: impl AsRef<Path>,
+        limits: BatchLimits,
+    ) -> Result<(Self, OpenOutcome), DurableLogError> {
         let path = path.as_ref().to_path_buf();
         let mut file = OpenOptions::new()
             .create(true)
@@ -93,7 +96,8 @@ impl DurableCdcLog {
             };
         }
 
-        let payload_len = u32::try_from(payload.len()).map_err(|_| DurableLogError::RecordLengthOverflow)?;
+        let payload_len =
+            u32::try_from(payload.len()).map_err(|_| DurableLogError::RecordLengthOverflow)?;
         let header = record_header(payload_len, crc32c(&payload), end_lsn);
         self.file.seek(SeekFrom::End(0))?;
         self.file.write_all(&header)?;
@@ -111,7 +115,7 @@ impl DurableCdcLog {
     ) -> Result<Vec<TransactionBatch>, DurableLogError> {
         let mut file = File::open(path)?;
         let file_len = file.metadata()?.len();
-    validate_file_header(&mut file, file_len)?;
+        validate_file_header(&mut file, file_len)?;
         Ok(scan_records(&mut file, limits, false, Some(after))?.collected)
     }
 }
@@ -189,13 +193,11 @@ fn parse_record_header(
     {
         return Err(DurableLogError::NonZeroRecordReserved);
     }
-    let expected_header_crc =
-        u32::from_le_bytes([header[28], header[29], header[30], header[31]]);
+    let expected_header_crc = u32::from_le_bytes([header[28], header[29], header[30], header[31]]);
     if crc32c(&header[..28]) != expected_header_crc {
         return Err(DurableLogError::RecordHeaderChecksumMismatch);
     }
-    let payload_len_u32 =
-        u32::from_le_bytes([header[8], header[9], header[10], header[11]]);
+    let payload_len_u32 = u32::from_le_bytes([header[8], header[9], header[10], header[11]]);
     let payload_len =
         usize::try_from(payload_len_u32).map_err(|_| DurableLogError::RecordLengthOverflow)?;
     if payload_len > limits.max_encoded_bytes {
@@ -204,8 +206,7 @@ fn parse_record_header(
             maximum: limits.max_encoded_bytes,
         });
     }
-    let payload_crc =
-        u32::from_le_bytes([header[12], header[13], header[14], header[15]]);
+    let payload_crc = u32::from_le_bytes([header[12], header[13], header[14], header[15]]);
     let end_lsn = LogSequenceNumber::new(u64::from_le_bytes([
         header[16], header[17], header[18], header[19], header[20], header[21], header[22],
         header[23],
@@ -370,9 +371,14 @@ pub enum DurableLogError {
     UnsupportedRecordVersion(u16),
     NonZeroRecordReserved,
     RecordHeaderChecksumMismatch,
-    RecordTooLarge { actual: usize, maximum: usize },
+    RecordTooLarge {
+        actual: usize,
+        maximum: usize,
+    },
     RecordLengthOverflow,
-    PayloadChecksumMismatch { end_lsn: LogSequenceNumber },
+    PayloadChecksumMismatch {
+        end_lsn: LogSequenceNumber,
+    },
     RecordLsnMismatch {
         header: LogSequenceNumber,
         payload: LogSequenceNumber,
@@ -404,21 +410,58 @@ impl fmt::Display for DurableLogError {
             Self::Codec(error) => write!(formatter, "CDC log transaction decode error: {error}"),
             Self::TornFileHeader => formatter.write_str("CDC log has a torn file header"),
             Self::InvalidFileMagic => formatter.write_str("CDC log file magic mismatch"),
-            Self::UnsupportedFileVersion(version) => write!(formatter, "unsupported CDC log file version {version}"),
-            Self::NonZeroFileReserved => formatter.write_str("CDC log file header reserved field is non-zero"),
-            Self::FileHeaderChecksumMismatch => formatter.write_str("CDC log file header checksum mismatch"),
+            Self::UnsupportedFileVersion(version) => {
+                write!(formatter, "unsupported CDC log file version {version}")
+            }
+            Self::NonZeroFileReserved => {
+                formatter.write_str("CDC log file header reserved field is non-zero")
+            }
+            Self::FileHeaderChecksumMismatch => {
+                formatter.write_str("CDC log file header checksum mismatch")
+            }
             Self::TornTail => formatter.write_str("CDC log has an incomplete final record"),
             Self::InvalidRecordMagic => formatter.write_str("CDC record magic mismatch"),
-            Self::UnsupportedRecordVersion(version) => write!(formatter, "unsupported CDC record version {version}"),
-            Self::NonZeroRecordReserved => formatter.write_str("CDC record reserved field is non-zero"),
-            Self::RecordHeaderChecksumMismatch => formatter.write_str("CDC record header checksum mismatch"),
-            Self::RecordTooLarge { actual, maximum } => write!(formatter, "CDC record is {actual} bytes; maximum is {maximum}"),
+            Self::UnsupportedRecordVersion(version) => {
+                write!(formatter, "unsupported CDC record version {version}")
+            }
+            Self::NonZeroRecordReserved => {
+                formatter.write_str("CDC record reserved field is non-zero")
+            }
+            Self::RecordHeaderChecksumMismatch => {
+                formatter.write_str("CDC record header checksum mismatch")
+            }
+            Self::RecordTooLarge { actual, maximum } => write!(
+                formatter,
+                "CDC record is {actual} bytes; maximum is {maximum}"
+            ),
             Self::RecordLengthOverflow => formatter.write_str("CDC record length overflow"),
-            Self::PayloadChecksumMismatch { end_lsn } => write!(formatter, "CDC record payload checksum mismatch at LSN {}", end_lsn.get()),
-            Self::RecordLsnMismatch { header, payload } => write!(formatter, "CDC record LSN {} differs from payload LSN {}", header.get(), payload.get()),
-            Self::NonMonotonicRecord { previous, current } => write!(formatter, "CDC record LSN {} is not greater than previous {}", current.get(), previous.get()),
-            Self::ConflictingReplay(lsn) => write!(formatter, "different transaction replayed for durable LSN {}", lsn.get()),
-            Self::MissingHistoricalCheckpoint(lsn) => write!(formatter, "replayed LSN {} is older than durable tail but absent from log", lsn.get()),
+            Self::PayloadChecksumMismatch { end_lsn } => write!(
+                formatter,
+                "CDC record payload checksum mismatch at LSN {}",
+                end_lsn.get()
+            ),
+            Self::RecordLsnMismatch { header, payload } => write!(
+                formatter,
+                "CDC record LSN {} differs from payload LSN {}",
+                header.get(),
+                payload.get()
+            ),
+            Self::NonMonotonicRecord { previous, current } => write!(
+                formatter,
+                "CDC record LSN {} is not greater than previous {}",
+                current.get(),
+                previous.get()
+            ),
+            Self::ConflictingReplay(lsn) => write!(
+                formatter,
+                "different transaction replayed for durable LSN {}",
+                lsn.get()
+            ),
+            Self::MissingHistoricalCheckpoint(lsn) => write!(
+                formatter,
+                "replayed LSN {} is older than durable tail but absent from log",
+                lsn.get()
+            ),
         }
     }
 }
@@ -437,7 +480,6 @@ impl std::error::Error for DurableLogError {
 mod tests {
     use super::*;
     use crate::model::sample_batch;
-    use std::io::{Read as _, Seek as _, Write as _};
     use tempfile::tempdir;
 
     fn batch_with_lsn(lsn: u64) -> TransactionBatch {
@@ -454,7 +496,8 @@ mod tests {
     }
 
     fn open_temp() -> (tempfile::TempDir, PathBuf, DurableCdcLog) {
-        let directory = tempdir().unwrap_or_else(|error| unreachable!("tempdir must work: {error}"));
+        let directory =
+            tempdir().unwrap_or_else(|error| unreachable!("tempdir must work: {error}"));
         let path = directory.path().join("cdc.log");
         let (log, _) = DurableCdcLog::open(&path, BatchLimits::default())
             .unwrap_or_else(|error| unreachable!("new log must open: {error}"));
@@ -478,11 +521,13 @@ mod tests {
         let first = sample_batch();
         let second = batch_with_lsn(200);
         assert_eq!(
-            log.append(&first).unwrap_or_else(|error| unreachable!("append: {error}")),
+            log.append(&first)
+                .unwrap_or_else(|error| unreachable!("append: {error}")),
             AppendOutcome::Appended
         );
         assert_eq!(
-            log.append(&second).unwrap_or_else(|error| unreachable!("append: {error}")),
+            log.append(&second)
+                .unwrap_or_else(|error| unreachable!("append: {error}")),
             AppendOutcome::Appended
         );
         drop(log);
@@ -503,9 +548,18 @@ mod tests {
         let (_directory, _path, mut log) = open_temp();
         let first = batch_with_lsn(10);
         let second = batch_with_lsn(20);
-        assert_eq!(log.append(&first).unwrap_or_else(|e| unreachable!("{e}")), AppendOutcome::Appended);
-        assert_eq!(log.append(&second).unwrap_or_else(|e| unreachable!("{e}")), AppendOutcome::Appended);
-        assert_eq!(log.append(&first).unwrap_or_else(|e| unreachable!("{e}")), AppendOutcome::Duplicate);
+        assert_eq!(
+            log.append(&first).unwrap_or_else(|e| unreachable!("{e}")),
+            AppendOutcome::Appended
+        );
+        assert_eq!(
+            log.append(&second).unwrap_or_else(|e| unreachable!("{e}")),
+            AppendOutcome::Appended
+        );
+        assert_eq!(
+            log.append(&first).unwrap_or_else(|e| unreachable!("{e}")),
+            AppendOutcome::Duplicate
+        );
         assert_eq!(log.last_durable_lsn(), LogSequenceNumber::new(20));
     }
 
@@ -526,31 +580,49 @@ mod tests {
             BatchLimits::default(),
         )
         .unwrap_or_else(|e| unreachable!("{e}"));
-        assert!(matches!(log.append(&conflicting), Err(DurableLogError::ConflictingReplay(_))));
-        assert!(matches!(log.append(&batch_with_lsn(15)), Err(DurableLogError::MissingHistoricalCheckpoint(_))));
+        assert!(matches!(
+            log.append(&conflicting),
+            Err(DurableLogError::ConflictingReplay(_))
+        ));
+        assert!(matches!(
+            log.append(&batch_with_lsn(15)),
+            Err(DurableLogError::MissingHistoricalCheckpoint(_))
+        ));
     }
 
     #[test]
     fn torn_record_header_is_truncated_on_open() {
         let (_directory, path, log) = open_temp();
         drop(log);
-        let mut file = OpenOptions::new().append(true).open(&path)
+        let mut file = OpenOptions::new()
+            .append(true)
+            .open(&path)
             .unwrap_or_else(|e| unreachable!("open: {e}"));
-        file.write_all(b"TXN1").unwrap_or_else(|e| unreachable!("write: {e}"));
-        file.sync_all().unwrap_or_else(|e| unreachable!("sync: {e}"));
+        file.write_all(b"TXN1")
+            .unwrap_or_else(|e| unreachable!("write: {e}"));
+        file.sync_all()
+            .unwrap_or_else(|e| unreachable!("sync: {e}"));
         drop(file);
         let (_, outcome) = DurableCdcLog::open(&path, BatchLimits::default())
             .unwrap_or_else(|e| unreachable!("repair: {e}"));
         assert!(outcome.recovered_torn_tail);
-        assert_eq!(std::fs::metadata(path).unwrap_or_else(|e| unreachable!("metadata: {e}")).len(), FILE_HEADER_LEN);
+        assert_eq!(
+            std::fs::metadata(path)
+                .unwrap_or_else(|e| unreachable!("metadata: {e}"))
+                .len(),
+            FILE_HEADER_LEN
+        );
     }
 
     #[test]
     fn torn_payload_is_truncated_on_open() {
         let (_directory, path, mut log) = open_temp();
-        log.append(&batch_with_lsn(10)).unwrap_or_else(|e| unreachable!("{e}"));
+        log.append(&batch_with_lsn(10))
+            .unwrap_or_else(|e| unreachable!("{e}"));
         drop(log);
-        let valid_len = std::fs::metadata(&path).unwrap_or_else(|e| unreachable!("{e}")).len();
+        let valid_len = std::fs::metadata(&path)
+            .unwrap_or_else(|e| unreachable!("{e}"))
+            .len();
         let payload = encode_transaction_batch(&batch_with_lsn(20), BatchLimits::default())
             .unwrap_or_else(|e| unreachable!("{e}"));
         let header = record_header(
@@ -558,63 +630,98 @@ mod tests {
             crc32c(&payload),
             LogSequenceNumber::new(20),
         );
-        let mut file = OpenOptions::new().append(true).open(&path)
+        let mut file = OpenOptions::new()
+            .append(true)
+            .open(&path)
             .unwrap_or_else(|e| unreachable!("{e}"));
-        file.write_all(&header).unwrap_or_else(|e| unreachable!("{e}"));
-        file.write_all(&payload[..1]).unwrap_or_else(|e| unreachable!("{e}"));
+        file.write_all(&header)
+            .unwrap_or_else(|e| unreachable!("{e}"));
+        file.write_all(&payload[..1])
+            .unwrap_or_else(|e| unreachable!("{e}"));
         file.sync_all().unwrap_or_else(|e| unreachable!("{e}"));
         drop(file);
         let (_, outcome) = DurableCdcLog::open(&path, BatchLimits::default())
             .unwrap_or_else(|e| unreachable!("{e}"));
         assert!(outcome.recovered_torn_tail);
-        assert_eq!(std::fs::metadata(path).unwrap_or_else(|e| unreachable!("{e}")).len(), valid_len);
+        assert_eq!(
+            std::fs::metadata(path)
+                .unwrap_or_else(|e| unreachable!("{e}"))
+                .len(),
+            valid_len
+        );
     }
 
     #[test]
     fn complete_payload_corruption_is_never_repaired_silently() {
         let (_directory, path, mut log) = open_temp();
-        log.append(&batch_with_lsn(10)).unwrap_or_else(|e| unreachable!("{e}"));
+        log.append(&batch_with_lsn(10))
+            .unwrap_or_else(|e| unreachable!("{e}"));
         drop(log);
-        let mut file = OpenOptions::new().read(true).write(true).open(&path)
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
             .unwrap_or_else(|e| unreachable!("{e}"));
         file.seek(SeekFrom::Start(FILE_HEADER_LEN + RECORD_HEADER_LEN))
             .unwrap_or_else(|e| unreachable!("{e}"));
         let mut byte = [0u8; 1];
-        file.read_exact(&mut byte).unwrap_or_else(|e| unreachable!("{e}"));
+        file.read_exact(&mut byte)
+            .unwrap_or_else(|e| unreachable!("{e}"));
         byte[0] ^= 1;
         file.seek(SeekFrom::Start(FILE_HEADER_LEN + RECORD_HEADER_LEN))
             .unwrap_or_else(|e| unreachable!("{e}"));
-        file.write_all(&byte).unwrap_or_else(|e| unreachable!("{e}"));
+        file.write_all(&byte)
+            .unwrap_or_else(|e| unreachable!("{e}"));
         file.sync_all().unwrap_or_else(|e| unreachable!("{e}"));
-        assert!(matches!(DurableCdcLog::open(path, BatchLimits::default()), Err(DurableLogError::PayloadChecksumMismatch { .. })));
+        assert!(matches!(
+            DurableCdcLog::open(path, BatchLimits::default()),
+            Err(DurableLogError::PayloadChecksumMismatch { .. })
+        ));
     }
 
     #[test]
     fn corrupt_file_and_record_headers_fail_closed() {
         let (_directory, path, log) = open_temp();
         drop(log);
-        let mut file = OpenOptions::new().read(true).write(true).open(&path)
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
             .unwrap_or_else(|e| unreachable!("{e}"));
-        file.seek(SeekFrom::Start(0)).unwrap_or_else(|e| unreachable!("{e}"));
+        file.seek(SeekFrom::Start(0))
+            .unwrap_or_else(|e| unreachable!("{e}"));
         file.write_all(b"X").unwrap_or_else(|e| unreachable!("{e}"));
         file.sync_all().unwrap_or_else(|e| unreachable!("{e}"));
         drop(file);
-        assert!(matches!(DurableCdcLog::open(&path, BatchLimits::default()), Err(DurableLogError::InvalidFileMagic)));
+        assert!(matches!(
+            DurableCdcLog::open(&path, BatchLimits::default()),
+            Err(DurableLogError::InvalidFileMagic)
+        ));
 
         let (_directory2, path2, mut log2) = open_temp();
-        log2.append(&batch_with_lsn(10)).unwrap_or_else(|e| unreachable!("{e}"));
-        drop(log2);
-        let mut file = OpenOptions::new().read(true).write(true).open(&path2)
+        log2.append(&batch_with_lsn(10))
             .unwrap_or_else(|e| unreachable!("{e}"));
-        file.seek(SeekFrom::Start(FILE_HEADER_LEN + 28)).unwrap_or_else(|e| unreachable!("{e}"));
+        drop(log2);
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path2)
+            .unwrap_or_else(|e| unreachable!("{e}"));
+        file.seek(SeekFrom::Start(FILE_HEADER_LEN + 28))
+            .unwrap_or_else(|e| unreachable!("{e}"));
         let mut crc = [0u8; 1];
-        file.read_exact(&mut crc).unwrap_or_else(|e| unreachable!("{e}"));
+        file.read_exact(&mut crc)
+            .unwrap_or_else(|e| unreachable!("{e}"));
         crc[0] ^= 1;
-        file.seek(SeekFrom::Start(FILE_HEADER_LEN + 28)).unwrap_or_else(|e| unreachable!("{e}"));
+        file.seek(SeekFrom::Start(FILE_HEADER_LEN + 28))
+            .unwrap_or_else(|e| unreachable!("{e}"));
         file.write_all(&crc).unwrap_or_else(|e| unreachable!("{e}"));
         file.sync_all().unwrap_or_else(|e| unreachable!("{e}"));
         drop(file);
-        assert!(matches!(DurableCdcLog::open(path2, BatchLimits::default()), Err(DurableLogError::RecordHeaderChecksumMismatch)));
+        assert!(matches!(
+            DurableCdcLog::open(path2, BatchLimits::default()),
+            Err(DurableLogError::RecordHeaderChecksumMismatch)
+        ));
     }
 
     #[test]
@@ -630,11 +737,22 @@ mod tests {
             DurableLogError::UnsupportedRecordVersion(2),
             DurableLogError::NonZeroRecordReserved,
             DurableLogError::RecordHeaderChecksumMismatch,
-            DurableLogError::RecordTooLarge { actual: 2, maximum: 1 },
+            DurableLogError::RecordTooLarge {
+                actual: 2,
+                maximum: 1,
+            },
             DurableLogError::RecordLengthOverflow,
-            DurableLogError::PayloadChecksumMismatch { end_lsn: LogSequenceNumber::new(1) },
-            DurableLogError::RecordLsnMismatch { header: LogSequenceNumber::new(1), payload: LogSequenceNumber::new(2) },
-            DurableLogError::NonMonotonicRecord { previous: LogSequenceNumber::new(2), current: LogSequenceNumber::new(1) },
+            DurableLogError::PayloadChecksumMismatch {
+                end_lsn: LogSequenceNumber::new(1),
+            },
+            DurableLogError::RecordLsnMismatch {
+                header: LogSequenceNumber::new(1),
+                payload: LogSequenceNumber::new(2),
+            },
+            DurableLogError::NonMonotonicRecord {
+                previous: LogSequenceNumber::new(2),
+                current: LogSequenceNumber::new(1),
+            },
             DurableLogError::ConflictingReplay(LogSequenceNumber::new(1)),
             DurableLogError::MissingHistoricalCheckpoint(LogSequenceNumber::new(1)),
         ];

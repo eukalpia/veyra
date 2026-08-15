@@ -8,11 +8,11 @@ use crate::model::{
 
 const MAGIC: &[u8; 8] = b"VYRTXN01";
 const VERSION: u16 = 1;
-const HEADER_LEN: usize = 48;
+const HEADER_LEN: usize = 52;
 #[cfg(test)]
 const WAL_FIXED_LEN: usize = 29;
 #[cfg(test)]
-const MESSAGE_FIXED_LEN: usize = 13;
+const MESSAGE_FIXED_LEN: usize = 17;
 const ITEM_WAL: u8 = 1;
 const ITEM_MESSAGE: u8 = 2;
 
@@ -21,7 +21,8 @@ pub fn encode_transaction_batch(
     batch: &TransactionBatch,
     limits: BatchLimits,
 ) -> Result<Vec<u8>, BatchCodecError> {
-    let item_count = u32::try_from(batch.items().len()).map_err(|_| BatchCodecError::LengthOverflow)?;
+    let item_count =
+        u32::try_from(batch.items().len()).map_err(|_| BatchCodecError::LengthOverflow)?;
     let mut capacity = HEADER_LEN;
     for item in batch.items() {
         capacity = capacity
@@ -287,16 +288,29 @@ impl fmt::Display for BatchCodecError {
             Self::UnexpectedEof => formatter.write_str("unexpected end of transaction bytes"),
             Self::LengthOverflow => formatter.write_str("transaction length overflow"),
             Self::LengthTooLarge { actual, maximum } => {
-                write!(formatter, "encoded field is {actual} bytes; maximum is {maximum}")
+                write!(
+                    formatter,
+                    "encoded field is {actual} bytes; maximum is {maximum}"
+                )
             }
             Self::TooManyItems { actual, maximum } => {
-                write!(formatter, "encoded transaction has {actual} items; maximum is {maximum}")
+                write!(
+                    formatter,
+                    "encoded transaction has {actual} items; maximum is {maximum}"
+                )
             }
-            Self::InvalidUtf8Prefix => formatter.write_str("logical message prefix is not valid UTF-8"),
+            Self::InvalidUtf8Prefix => {
+                formatter.write_str("logical message prefix is not valid UTF-8")
+            }
             Self::UnknownItemTag(tag) => write!(formatter, "unknown transaction item tag {tag}"),
-            Self::TrailingBytes(count) => write!(formatter, "transaction contains {count} trailing bytes"),
+            Self::TrailingBytes(count) => {
+                write!(formatter, "transaction contains {count} trailing bytes")
+            }
             Self::EncodedTooLarge { actual, maximum } => {
-                write!(formatter, "encoded transaction is {actual} bytes; maximum is {maximum}")
+                write!(
+                    formatter,
+                    "encoded transaction is {actual} bytes; maximum is {maximum}"
+                )
             }
             Self::Validation(error) => write!(formatter, "transaction validation failed: {error}"),
         }
@@ -384,7 +398,8 @@ mod tests {
 
         let mut invalid_utf8 = bytes.clone();
         let message_tag = HEADER_LEN + WAL_FIXED_LEN + 3;
-        invalid_utf8[message_tag] = 0xFF;
+        let prefix_start = message_tag + 1 + 8 + 4;
+        invalid_utf8[prefix_start] = 0xFF;
         assert!(matches!(
             decode_transaction_batch(&invalid_utf8, BatchLimits::default()),
             Err(BatchCodecError::InvalidUtf8Prefix)
@@ -399,8 +414,7 @@ mod tests {
         for end in 0..HEADER_LEN {
             assert!(matches!(
                 decode_transaction_batch(&bytes[..end], BatchLimits::default()),
-                Err(BatchCodecError::UnexpectedEof)
-                    | Err(BatchCodecError::InvalidMagic)
+                Err(BatchCodecError::UnexpectedEof) | Err(BatchCodecError::InvalidMagic)
             ));
         }
 
@@ -418,7 +432,7 @@ mod tests {
         ));
 
         let mut too_many = bytes.clone();
-        too_many[44..48].copy_from_slice(&3u32.to_le_bytes());
+        too_many[48..52].copy_from_slice(&3u32.to_le_bytes());
         let item_bound = BatchLimits {
             max_items: 2,
             ..BatchLimits::default()
@@ -430,8 +444,7 @@ mod tests {
 
         let mut item_too_large = bytes.clone();
         let wal_len_offset = HEADER_LEN + 1 + 8 + 8 + 8;
-        item_too_large[wal_len_offset..wal_len_offset + 4]
-            .copy_from_slice(&10u32.to_le_bytes());
+        item_too_large[wal_len_offset..wal_len_offset + 4].copy_from_slice(&10u32.to_le_bytes());
         let small_item = BatchLimits {
             max_item_bytes: 4,
             ..BatchLimits::default()
@@ -450,7 +463,9 @@ mod tests {
         bytes[16..24].copy_from_slice(&99u64.to_le_bytes());
         assert!(matches!(
             decode_transaction_batch(&bytes, BatchLimits::default()),
-            Err(BatchCodecError::Validation(BatchValidationError::CommitLsnMismatch { .. }))
+            Err(BatchCodecError::Validation(
+                BatchValidationError::CommitLsnMismatch { .. }
+            ))
         ));
     }
 
@@ -462,12 +477,21 @@ mod tests {
             BatchCodecError::NonZeroReserved,
             BatchCodecError::UnexpectedEof,
             BatchCodecError::LengthOverflow,
-            BatchCodecError::LengthTooLarge { actual: 2, maximum: 1 },
-            BatchCodecError::TooManyItems { actual: 2, maximum: 1 },
+            BatchCodecError::LengthTooLarge {
+                actual: 2,
+                maximum: 1,
+            },
+            BatchCodecError::TooManyItems {
+                actual: 2,
+                maximum: 1,
+            },
             BatchCodecError::InvalidUtf8Prefix,
             BatchCodecError::UnknownItemTag(3),
             BatchCodecError::TrailingBytes(2),
-            BatchCodecError::EncodedTooLarge { actual: 2, maximum: 1 },
+            BatchCodecError::EncodedTooLarge {
+                actual: 2,
+                maximum: 1,
+            },
         ];
         for error in errors {
             assert!(!error.to_string().is_empty());

@@ -1,6 +1,8 @@
 use core::fmt;
 
-use pgwire_replication::{Lsn, PgWireError, ReplicationClient, ReplicationConfig, ReplicationEvent};
+use pgwire_replication::{
+    Lsn, PgWireError, ReplicationClient, ReplicationConfig, ReplicationEvent,
+};
 use veyra_types::LogSequenceNumber;
 
 use crate::assembler::CdcEvent;
@@ -253,10 +255,7 @@ mod tests {
     #[test]
     fn invalid_lsn_diagnostic_is_stable() {
         let error = PostgresCdcError::InvalidTransportLsn("bad".to_owned());
-        assert_eq!(
-            error.to_string(),
-            "invalid replication transport LSN 'bad'"
-        );
+        assert_eq!(error.to_string(), "invalid replication transport LSN 'bad'");
         assert!(std::error::Error::source(&error).is_none());
     }
 }
