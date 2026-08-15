@@ -28,7 +28,6 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
-
           path = Path("crates/veyra-cdc/src/durable.rs")
           text = path.read_text()
           old = "        if length == 0 {\n            write_file_header(&mut file)?;\n        } else {"
@@ -37,28 +36,10 @@ jobs:
               raise SystemExit("durable initialization pattern not found")
           text = text.replace(old, new, 1)
           marker = "fn write_file_header(file: &mut File) -> Result<(), DurableLogError> {"
-          helper = '''#[cfg(unix)]
-fn sync_parent_directory(path: &Path) -> Result<(), DurableLogError> {
-    let parent = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    File::open(parent)?.sync_all()?;
-    Ok(())
-}
-
-#[cfg(windows)]
-fn sync_parent_directory(_path: &Path) -> Result<(), DurableLogError> {
-    // `File::sync_all` already requests data and metadata flush through the
-    // standard library. We do not add unsafe Win32 directory handles here.
-    Ok(())
-}
-
-'''
+          helper = "#[cfg(unix)]\nfn sync_parent_directory(path: &Path) -> Result<(), DurableLogError> {\n    let parent = path\n        .parent()\n        .filter(|parent| !parent.as_os_str().is_empty())\n        .unwrap_or_else(|| Path::new(\".\"));\n    File::open(parent)?.sync_all()?;\n    Ok(())\n}\n\n#[cfg(windows)]\nfn sync_parent_directory(_path: &Path) -> Result<(), DurableLogError> {\n    Ok(())\n}\n\n"
           if marker not in text:
               raise SystemExit("durable header writer marker not found")
-          text = text.replace(marker, helper + marker, 1)
-          path.write_text(text)
+          path.write_text(text.replace(marker, helper + marker, 1))
       - name: Canonical format
         run: cargo fmt --all
       - name: Prove Clippy is warning-free
