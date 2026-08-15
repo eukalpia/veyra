@@ -79,7 +79,6 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
-        volumes: []
     env:
       VEYRA_TEST_POSTGRES_URL: "host=127.0.0.1 port=5432 user=postgres password=postgres dbname=veyra"
     steps:
@@ -217,8 +216,14 @@ jobs:
         run: rustup toolchain install nightly --profile minimal --component miri
       - name: Run Miri / types
         run: cargo +nightly miri test -p veyra-types --lib --locked -- --skip any_ordered_chain_is_accepted
-      - name: Run Miri / CDC pure core
-        run: cargo +nightly miri test -p veyra-cdc --lib --locked -- assembler::tests codec::tests model::tests progress::tests
+      - name: Run Miri / CDC assembler
+        run: cargo +nightly miri test -p veyra-cdc --lib --locked -- assembler::tests
+      - name: Run Miri / CDC codec
+        run: cargo +nightly miri test -p veyra-cdc --lib --locked -- codec::tests
+      - name: Run Miri / CDC model
+        run: cargo +nightly miri test -p veyra-cdc --lib --locked -- model::tests
+      - name: Run Miri / CDC progress
+        run: cargo +nightly miri test -p veyra-cdc --lib --locked -- progress::tests
 
   fuzz-smoke:
     name: Fuzz smoke / parsers
