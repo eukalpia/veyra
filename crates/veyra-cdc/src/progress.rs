@@ -31,7 +31,7 @@ impl CdcProgressTracker {
         self.progress
     }
 
-    /// Records the greatest WAL coordinate observed from PostgreSQL.
+    /// Records the greatest WAL coordinate observed from `PostgreSQL`.
     pub fn observe_received(&mut self, lsn: LogSequenceNumber) -> Result<(), CdcProgressError> {
         let received = self.progress.received().max(lsn);
         self.progress = ProjectionProgress::try_new(

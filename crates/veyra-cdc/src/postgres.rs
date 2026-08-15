@@ -8,7 +8,7 @@ use veyra_types::LogSequenceNumber;
 use crate::assembler::CdcEvent;
 use crate::snapshot::parse_pg_lsn;
 
-/// Live PostgreSQL logical replication transport.
+/// Live `PostgreSQL` logical replication transport.
 ///
 /// Transaction semantics and durability remain owned by Veyra; this wrapper only
 /// translates `pgwire-replication` transport events into Veyra types.
@@ -44,7 +44,7 @@ impl PostgresReplicationStream {
         Ok(())
     }
 
-    /// Requests graceful stream shutdown and waits for PostgreSQL cleanup.
+    /// Requests graceful stream shutdown and waits for `PostgreSQL` cleanup.
     pub async fn shutdown(&mut self) -> Result<(), PostgresCdcError> {
         self.client.shutdown().await?;
         Ok(())
@@ -125,7 +125,7 @@ fn to_pg_lsn(value: LogSequenceNumber) -> Result<Lsn, PostgresCdcError> {
         .map_err(|_| PostgresCdcError::InvalidTransportLsn(text))
 }
 
-/// PostgreSQL replication transport failure.
+/// `PostgreSQL` replication transport failure.
 #[derive(Debug)]
 pub enum PostgresCdcError {
     Transport(PgWireError),

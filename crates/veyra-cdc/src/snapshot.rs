@@ -28,7 +28,7 @@ impl SnapshotBoundary {
         self.snapshot_lsn
     }
 
-    /// PostgreSQL snapshot identifier, useful for diagnostics and replay fixtures.
+    /// `PostgreSQL` snapshot identifier, useful for diagnostics and replay fixtures.
     #[must_use]
     pub fn snapshot_id(&self) -> &str {
         &self.snapshot_id
@@ -116,7 +116,7 @@ pub async fn begin_consistent_snapshot<'a>(
     })
 }
 
-/// Parses PostgreSQL `X/Y` LSN text into Veyra's canonical `u64`.
+/// Parses `PostgreSQL` `X/Y` LSN text into Veyra's canonical `u64`.
 pub fn parse_pg_lsn(value: &str) -> Result<LogSequenceNumber, SnapshotError> {
     let (high, low) = value
         .split_once('/')
@@ -134,7 +134,7 @@ pub fn parse_pg_lsn(value: &str) -> Result<LogSequenceNumber, SnapshotError> {
     Ok(LogSequenceNumber::new((high << 32) | low))
 }
 
-/// Initial snapshot failure. Every variant requires PostgreSQL slow-path fallback.
+/// Initial snapshot failure. Every variant requires `PostgreSQL` slow-path fallback.
 #[derive(Debug)]
 pub enum SnapshotError {
     Postgres(tokio_postgres::Error),

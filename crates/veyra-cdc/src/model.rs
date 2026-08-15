@@ -2,7 +2,7 @@ use core::fmt;
 
 use veyra_types::LogSequenceNumber;
 
-/// Hard bounds for one decoded or assembled PostgreSQL transaction.
+/// Hard bounds for one decoded or assembled `PostgreSQL` transaction.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BatchLimits {
     /// Maximum number of logical items in one transaction.
@@ -26,7 +26,7 @@ impl Default for BatchLimits {
     }
 }
 
-/// Opaque `pgoutput` WAL bytes observed inside one PostgreSQL transaction.
+/// Opaque `pgoutput` WAL bytes observed inside one `PostgreSQL` transaction.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WalChunk {
     wal_start: LogSequenceNumber,
@@ -67,13 +67,13 @@ impl WalChunk {
         self.wal_start
     }
 
-    /// End WAL coordinate reported by PostgreSQL for this message.
+    /// End WAL coordinate reported by `PostgreSQL` for this message.
     #[must_use]
     pub const fn wal_end(&self) -> LogSequenceNumber {
         self.wal_end
     }
 
-    /// PostgreSQL server timestamp from the replication envelope.
+    /// `PostgreSQL` server timestamp from the replication envelope.
     #[must_use]
     pub const fn server_time_micros(&self) -> i64 {
         self.server_time_micros
@@ -86,7 +86,7 @@ impl WalChunk {
     }
 }
 
-/// PostgreSQL logical decoding message attached to a transaction.
+/// `PostgreSQL` logical decoding message attached to a transaction.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LogicalMessage {
     lsn: LogSequenceNumber,
@@ -140,7 +140,7 @@ impl LogicalMessage {
     }
 }
 
-/// One ordered item within a committed PostgreSQL transaction.
+/// One ordered item within a committed `PostgreSQL` transaction.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TransactionItem {
     /// Opaque `pgoutput` bytes.
@@ -153,16 +153,12 @@ impl TransactionItem {
     pub(crate) fn payload_len(&self) -> usize {
         match self {
             Self::Wal(chunk) => chunk.data.len(),
-            Self::Message(message) => message
-                .prefix
-                .len()
-                .checked_add(message.content.len())
-                .unwrap_or(usize::MAX),
+            Self::Message(message) => message.prefix.len().saturating_add(message.content.len()),
         }
     }
 }
 
-/// A complete PostgreSQL transaction. It is query-invisible until `Commit`.
+/// A complete `PostgreSQL` transaction. It is query-invisible until `Commit`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TransactionBatch {
     xid: u32,
@@ -219,7 +215,7 @@ impl TransactionBatch {
         })
     }
 
-    /// PostgreSQL transaction ID.
+    /// `PostgreSQL` transaction ID.
     #[must_use]
     pub const fn xid(&self) -> u32 {
         self.xid
@@ -243,7 +239,7 @@ impl TransactionBatch {
         self.end_lsn
     }
 
-    /// Commit timestamp supplied by PostgreSQL.
+    /// Commit timestamp supplied by `PostgreSQL`.
     #[must_use]
     pub const fn commit_time_micros(&self) -> i64 {
         self.commit_time_micros

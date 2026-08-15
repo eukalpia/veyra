@@ -1,9 +1,9 @@
 #![forbid(unsafe_code)]
 
-//! Correctness-first PostgreSQL logical replication ingestion for Veyra.
+//! Correctness-first `PostgreSQL` logical replication ingestion for Veyra.
 //!
 //! This crate owns transaction assembly, durable replay, snapshot boundaries,
-//! and PostgreSQL feedback ordering. It deliberately does not interpret Booking
+//! and `PostgreSQL` feedback ordering. It deliberately does not interpret Booking
 //! Asia business rows yet: raw `pgoutput` bytes remain opaque until a versioned
 //! projection schema exists.
 

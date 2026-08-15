@@ -58,7 +58,7 @@ struct PendingTransaction {
     items: Vec<TransactionItem>,
 }
 
-/// Single-writer PostgreSQL transaction-boundary assembler.
+/// Single-writer `PostgreSQL` transaction-boundary assembler.
 #[derive(Clone, Debug)]
 pub struct CdcAssembler {
     pending: Option<PendingTransaction>,
@@ -75,7 +75,7 @@ impl CdcAssembler {
         }
     }
 
-    /// True while a PostgreSQL transaction is incomplete and therefore invisible.
+    /// True while a `PostgreSQL` transaction is incomplete and therefore invisible.
     #[must_use]
     pub const fn in_transaction(&self) -> bool {
         self.pending.is_some()

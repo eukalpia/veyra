@@ -199,8 +199,12 @@ async fn snapshot_catchup_restart_and_duplicate_delivery_are_gap_free() -> Resul
     let directory = tempdir()?;
     let log_path = directory.path().join("cdc.log");
 
-    let mut first_pump =
-        start_pump(&log_path, boundary.replay_from_lsn(), CdcProgressTracker::ZERO).await?;
+    let mut first_pump = start_pump(
+        &log_path,
+        boundary.replay_from_lsn(),
+        CdcProgressTracker::ZERO,
+    )
+    .await?;
     let first_lsn = consume_initial_snapshot_transaction(&mut first_pump).await?;
 
     writer

@@ -18,14 +18,14 @@ pub enum CdcPumpEvent {
     },
     /// Bounded replay reached its configured stop point.
     StoppedAt(LogSequenceNumber),
-    /// PostgreSQL ended replication cleanly.
+    /// `PostgreSQL` ended replication cleanly.
     EndOfStream,
 }
 
 /// Correctness-first single-writer CDC coordinator.
 ///
 /// The order on commit is intentionally fixed:
-/// assemble -> append -> fsync -> mark durable -> PostgreSQL feedback.
+/// assemble -> append -> fsync -> mark durable -> `PostgreSQL` feedback.
 /// No query projection is modified by this type.
 pub struct CdcPump {
     stream: PostgresReplicationStream,

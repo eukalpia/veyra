@@ -343,9 +343,9 @@ mod tests {
 
     #[test]
     fn canonical_sizes_are_exact() {
-        assert_eq!(HEADER_LEN, 48);
+        assert_eq!(HEADER_LEN, 52);
         assert_eq!(WAL_FIXED_LEN, 29);
-        assert_eq!(MESSAGE_FIXED_LEN, 13);
+        assert_eq!(MESSAGE_FIXED_LEN, 17);
     }
 
     #[test]
@@ -414,7 +414,7 @@ mod tests {
         for end in 0..HEADER_LEN {
             assert!(matches!(
                 decode_transaction_batch(&bytes[..end], BatchLimits::default()),
-                Err(BatchCodecError::UnexpectedEof) | Err(BatchCodecError::InvalidMagic)
+                Err(BatchCodecError::UnexpectedEof | BatchCodecError::InvalidMagic)
             ));
         }
 

@@ -12,9 +12,11 @@ use crate::model::{BatchLimits, TransactionBatch};
 const FILE_MAGIC: &[u8; 8] = b"VYRCDC01";
 const FILE_VERSION: u16 = 1;
 const FILE_HEADER_LEN: u64 = 16;
+const FILE_HEADER_BYTES: usize = 16;
 const RECORD_MAGIC: &[u8; 4] = b"TXN1";
 const RECORD_VERSION: u16 = 1;
 const RECORD_HEADER_LEN: u64 = 32;
+const RECORD_HEADER_BYTES: usize = 32;
 
 /// Result of opening and validating the durable log.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -51,6 +53,7 @@ impl DurableCdcLog {
         let path = path.as_ref().to_path_buf();
         let mut file = OpenOptions::new()
             .create(true)
+            .truncate(false)
             .read(true)
             .write(true)
             .open(&path)?;
@@ -121,7 +124,7 @@ impl DurableCdcLog {
 }
 
 fn write_file_header(file: &mut File) -> Result<(), DurableLogError> {
-    let mut header = [0u8; FILE_HEADER_LEN as usize];
+    let mut header = [0u8; FILE_HEADER_BYTES];
     header[..8].copy_from_slice(FILE_MAGIC);
     header[8..10].copy_from_slice(&FILE_VERSION.to_le_bytes());
     header[10..12].copy_from_slice(&0u16.to_le_bytes());
@@ -138,7 +141,7 @@ fn validate_file_header(file: &mut File, file_len: u64) -> Result<(), DurableLog
         return Err(DurableLogError::TornFileHeader);
     }
     file.seek(SeekFrom::Start(0))?;
-    let mut header = [0u8; FILE_HEADER_LEN as usize];
+    let mut header = [0u8; FILE_HEADER_BYTES];
     file.read_exact(&mut header)?;
     if header[..8] != FILE_MAGIC[..] {
         return Err(DurableLogError::InvalidFileMagic);
@@ -243,7 +246,7 @@ fn scan_records(
         }
 
         file.seek(SeekFrom::Start(offset))?;
-        let mut header = [0u8; RECORD_HEADER_LEN as usize];
+        let mut header = [0u8; RECORD_HEADER_BYTES];
         file.read_exact(&mut header)?;
         let parsed = parse_record_header(&header, limits)?;
         let payload_len_u64 =
@@ -321,7 +324,7 @@ fn find_payload_at(
             return Err(DurableLogError::TornTail);
         }
         file.seek(SeekFrom::Start(offset))?;
-        let mut header = [0u8; RECORD_HEADER_LEN as usize];
+        let mut header = [0u8; RECORD_HEADER_BYTES];
         file.read_exact(&mut header)?;
         let parsed = parse_record_header(&header, limits)?;
         let payload_len_u64 =
