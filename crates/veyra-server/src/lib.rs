@@ -97,64 +97,54 @@ fn health_response(snapshot: &RuntimeSnapshot) -> HealthResponse {
 
 #[cfg(test)]
 mod tests {
-    use axum::body::Body;
-    use axum::http::Request;
-    use tower::ServiceExt;
-
     use super::*;
     use veyra_runtime::CannotProveReason;
 
-    async fn status_for(runtime: RuntimeState, uri: &str) -> Result<StatusCode, axum::http::Error> {
-        let request = Request::builder().uri(uri).body(Body::empty())?;
-        let response = match router(runtime).oneshot(request).await {
-            Ok(response) => response,
-            Err(never) => match never {},
-        };
-        Ok(response.status())
+    #[tokio::test]
+    async fn liveness_is_ok_even_while_starting() {
+        let (status, Json(response)) = liveness(State(bootstrap_runtime())).await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert!(response.alive);
+        assert_eq!(response.phase, ServicePhase::Starting);
+        assert!(!response.can_prove_result);
     }
 
     #[tokio::test]
-    async fn liveness_is_ok_even_while_starting() -> Result<(), axum::http::Error> {
-        assert_eq!(
-            status_for(bootstrap_runtime(), "/health/live").await?,
-            StatusCode::OK
-        );
-        Ok(())
+    async fn readiness_fails_closed_before_projection_publish() {
+        let (status, Json(response)) = readiness(State(bootstrap_runtime())).await;
+
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert!(!response.can_prove_result);
+        assert_eq!(response.generation, GenerationId::UNPUBLISHED.get());
     }
 
     #[tokio::test]
-    async fn readiness_fails_closed_before_projection_publish() -> Result<(), axum::http::Error> {
-        assert_eq!(
-            status_for(bootstrap_runtime(), "/health/ready").await?,
-            StatusCode::SERVICE_UNAVAILABLE
-        );
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn readiness_is_ok_only_for_ready_snapshot() -> Result<(), axum::http::Error> {
+    async fn readiness_is_ok_only_for_ready_snapshot() {
         let runtime = RuntimeState::new(RuntimeSnapshot::ready(
             GenerationId::new(9),
             ProjectionProgress::at(LogSequenceNumber::new(55)),
         ));
+        let (status, Json(response)) = readiness(State(runtime)).await;
 
-        assert_eq!(status_for(runtime, "/health/ready").await?, StatusCode::OK);
-        Ok(())
+        assert_eq!(status, StatusCode::OK);
+        assert!(response.can_prove_result);
+        assert_eq!(response.applied_lsn, 55);
+        assert_eq!(response.published_lsn, 55);
     }
 
     #[tokio::test]
-    async fn readiness_rejects_degraded_snapshot() -> Result<(), axum::http::Error> {
+    async fn readiness_rejects_degraded_snapshot() {
         let runtime = RuntimeState::new(RuntimeSnapshot::degraded(
             GenerationId::new(9),
             ProjectionProgress::at(LogSequenceNumber::new(55)),
             CannotProveReason::CdcGap,
         ));
+        let (status, Json(response)) = readiness(State(runtime)).await;
 
-        assert_eq!(
-            status_for(runtime, "/health/ready").await?,
-            StatusCode::SERVICE_UNAVAILABLE
-        );
-        Ok(())
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(response.phase, ServicePhase::Degraded);
+        assert!(!response.can_prove_result);
     }
 
     #[tokio::test]

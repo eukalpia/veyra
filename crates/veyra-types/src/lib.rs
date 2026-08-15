@@ -275,13 +275,13 @@ mod tests {
     }
 
     #[test]
-    fn progress_getters_and_zero_are_exact() -> Result<(), ProjectionProgressError> {
-        let progress = ProjectionProgress::try_new(
-            LogSequenceNumber::new(8),
-            LogSequenceNumber::new(7),
-            LogSequenceNumber::new(6),
-            LogSequenceNumber::new(5),
-        )?;
+    fn progress_getters_and_zero_are_exact() {
+        let progress = ProjectionProgress {
+            received: LogSequenceNumber::new(8),
+            durable: LogSequenceNumber::new(7),
+            applied: LogSequenceNumber::new(6),
+            published: LogSequenceNumber::new(5),
+        };
 
         assert_eq!(progress.received(), LogSequenceNumber::new(8));
         assert_eq!(progress.durable(), LogSequenceNumber::new(7));
@@ -290,14 +290,13 @@ mod tests {
         assert_eq!(ProjectionProgress::ZERO.received(), LogSequenceNumber::ZERO);
         assert_eq!(
             ProjectionProgress::at(LogSequenceNumber::new(9)),
-            ProjectionProgress::try_new(
-                LogSequenceNumber::new(9),
-                LogSequenceNumber::new(9),
-                LogSequenceNumber::new(9),
-                LogSequenceNumber::new(9),
-            )?
+            ProjectionProgress {
+                received: LogSequenceNumber::new(9),
+                durable: LogSequenceNumber::new(9),
+                applied: LogSequenceNumber::new(9),
+                published: LogSequenceNumber::new(9),
+            }
         );
-        Ok(())
     }
 
     #[test]
