@@ -3,6 +3,7 @@ members = [
     "crates/veyra-types",
     "crates/veyra-runtime",
     "crates/veyra-server",
+    "crates/veyra-cdc",
 ]
 exclude = ["fuzz"]
 resolver = "2"
@@ -18,11 +19,15 @@ authors = ["Veyra Contributors"]
 [workspace.dependencies]
 arc-swap = "1.7"
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
+crc32c = "0.6.8"
 criterion = "0.5.1"
+pgwire-replication = "0.4.0"
 proptest = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal"] }
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "time"] }
+tokio-postgres = "0.7.18"
 tower = { version = "0.5", features = ["util"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

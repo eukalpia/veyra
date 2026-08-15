@@ -1,0 +1,37 @@
+name: M1 Lockfile Bootstrap
+
+on:
+  push:
+    branches:
+      - agent/m1-cdc
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m1-lock-bootstrap-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VEYRA_RUST_VERSION: "1.97.1"
+
+jobs:
+  generate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install pinned stable Rust
+        run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal
+      - name: Generate workspace lockfile
+        run: cargo generate-lockfile
+      - name: Generate fuzz lockfile
+        working-directory: fuzz
+        run: cargo generate-lockfile
+      - name: Upload generated lockfiles
+        uses: actions/upload-artifact@v4
+        with:
+          name: m1-lockfiles
+          path: |
+            Cargo.lock
+            fuzz/Cargo.lock
+          if-no-files-found: error

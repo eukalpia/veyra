@@ -9,11 +9,19 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-veyra-types = { path = "../crates/veyra-types" }
+veyra-cdc = { version = "0.1.0", path = "../crates/veyra-cdc" }
+veyra-types = { version = "0.1.0", path = "../crates/veyra-types" }
 
 [[bin]]
 name = "projection_progress"
 path = "fuzz_targets/projection_progress.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cdc_batch_decode"
+path = "fuzz_targets/cdc_batch_decode.rs"
 test = false
 doc = false
 bench = false

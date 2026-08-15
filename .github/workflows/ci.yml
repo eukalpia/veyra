@@ -62,6 +62,45 @@ jobs:
       - name: Test
         run: cargo test --workspace --all-features --locked
 
+  postgres-cdc:
+    name: PostgreSQL CDC integration
+    needs: lockfiles
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17.10-bookworm
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: veyra
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d veyra"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+        volumes: []
+    env:
+      VEYRA_TEST_POSTGRES_URL: "host=127.0.0.1 port=5432 user=postgres password=postgres dbname=veyra"
+    steps:
+      - uses: actions/checkout@v6
+      - name: Enable logical replication
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h 127.0.0.1 -U postgres -d veyra -c "ALTER SYSTEM SET wal_level = logical;"
+          psql -h 127.0.0.1 -U postgres -d veyra -c "ALTER SYSTEM SET max_replication_slots = 16;"
+          psql -h 127.0.0.1 -U postgres -d veyra -c "ALTER SYSTEM SET max_wal_senders = 16;"
+          docker restart ${{ job.services.postgres.id }}
+          for i in {1..30}; do
+            pg_isready -h 127.0.0.1 -U postgres -d veyra && break
+            sleep 1
+          done
+      - name: Install pinned stable Rust
+        run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal
+      - name: Run PostgreSQL CDC acceptance test
+        run: cargo test -p veyra-cdc --test postgres_cdc --locked -- --nocapture
+
   nextest:
     name: Nextest
     needs: lockfiles
@@ -79,8 +118,35 @@ jobs:
     name: Coverage >= 99%
     needs: lockfiles
     runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17.10-bookworm
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: veyra
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d veyra"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      VEYRA_TEST_POSTGRES_URL: "host=127.0.0.1 port=5432 user=postgres password=postgres dbname=veyra"
     steps:
       - uses: actions/checkout@v6
+      - name: Enable logical replication
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h 127.0.0.1 -U postgres -d veyra -c "ALTER SYSTEM SET wal_level = logical;"
+          psql -h 127.0.0.1 -U postgres -d veyra -c "ALTER SYSTEM SET max_replication_slots = 16;"
+          psql -h 127.0.0.1 -U postgres -d veyra -c "ALTER SYSTEM SET max_wal_senders = 16;"
+          docker restart ${{ job.services.postgres.id }}
+          for i in {1..30}; do
+            pg_isready -h 127.0.0.1 -U postgres -d veyra && break
+            sleep 1
+          done
       - name: Install pinned stable Rust with coverage tools
         run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal --component llvm-tools-preview
       - name: Install cargo-llvm-cov
@@ -91,6 +157,7 @@ jobs:
           --workspace
           --all-features
           --lib
+          --tests
           --locked
           --summary-only
           --show-missing-lines
@@ -139,7 +206,7 @@ jobs:
         run: cargo doc --workspace --all-features --no-deps --locked
 
   miri:
-    name: Miri / veyra-types
+    name: Miri / deterministic core
     needs: lockfiles
     runs-on: ubuntu-24.04
     env:
@@ -148,11 +215,13 @@ jobs:
       - uses: actions/checkout@v6
       - name: Install nightly Miri
         run: rustup toolchain install nightly --profile minimal --component miri
-      - name: Run Miri
+      - name: Run Miri / types
         run: cargo +nightly miri test -p veyra-types --lib --locked -- --skip any_ordered_chain_is_accepted
+      - name: Run Miri / CDC pure core
+        run: cargo +nightly miri test -p veyra-cdc --lib --locked -- assembler::tests codec::tests model::tests progress::tests
 
   fuzz-smoke:
-    name: Fuzz smoke / projection progress
+    name: Fuzz smoke / parsers
     needs: lockfiles
     runs-on: ubuntu-24.04
     steps:
@@ -164,6 +233,9 @@ jobs:
       - name: Verify fuzz lockfile
         working-directory: fuzz
         run: cargo metadata --locked --format-version 1 --no-deps
-      - name: Run bounded fuzz smoke
+      - name: Run projection progress fuzz smoke
         working-directory: fuzz
         run: cargo +nightly fuzz run projection_progress -- -runs=512
+      - name: Run CDC batch decoder fuzz smoke
+        working-directory: fuzz
+        run: cargo +nightly fuzz run cdc_batch_decode -- -runs=1024

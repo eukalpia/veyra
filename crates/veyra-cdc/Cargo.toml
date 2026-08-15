@@ -1,0 +1,22 @@
+[package]
+name = "veyra-cdc"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+crc32c.workspace = true
+pgwire-replication.workspace = true
+tokio-postgres.workspace = true
+veyra-types = { version = "0.1.0", path = "../veyra-types" }
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile.workspace = true
+tokio.workspace = true
