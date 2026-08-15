@@ -1,0 +1,21 @@
+[package]
+name = "veyra-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+veyra-types = { path = "../crates/veyra-types" }
+
+[[bin]]
+name = "projection_progress"
+path = "fuzz_targets/projection_progress.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

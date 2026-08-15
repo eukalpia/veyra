@@ -1,0 +1,23 @@
+[package]
+name = "veyra-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+axum.workspace = true
+serde.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+veyra-runtime = { path = "../veyra-runtime" }
+veyra-types = { path = "../veyra-types" }
+
+[dev-dependencies]
+tower.workspace = true
+
+[lints]
+workspace = true

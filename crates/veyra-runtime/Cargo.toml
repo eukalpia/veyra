@@ -1,0 +1,23 @@
+[package]
+name = "veyra-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+arc-swap.workspace = true
+serde.workspace = true
+veyra-types = { path = "../veyra-types" }
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "snapshot"
+harness = false
+
+[lints]
+workspace = true
