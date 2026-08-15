@@ -273,7 +273,10 @@ mod tests {
     #[test]
     fn transport_error_diagnostics_are_stable() {
         let invalid = PostgresCdcError::InvalidTransportLsn("bad".to_owned());
-        assert_eq!(invalid.to_string(), "invalid replication transport LSN 'bad'");
+        assert_eq!(
+            invalid.to_string(),
+            "invalid replication transport LSN 'bad'"
+        );
         assert!(std::error::Error::source(&invalid).is_none());
         let mismatch = PostgresCdcError::ResumeProofSlotMismatch {
             config_slot: "a".to_owned(),

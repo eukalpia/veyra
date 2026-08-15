@@ -60,6 +60,7 @@ impl DurableCdcLog {
         let length = file.metadata()?.len();
         if length == 0 {
             write_file_header(&mut file)?;
+            sync_parent_directory(&path)?;
         } else {
             validate_file_header(&mut file, length)?;
         }
@@ -121,6 +122,21 @@ impl DurableCdcLog {
         validate_file_header(&mut file, file_len)?;
         Ok(scan_records(&mut file, limits, false, Some(after))?.collected)
     }
+}
+
+#[cfg(unix)]
+fn sync_parent_directory(path: &Path) -> Result<(), DurableLogError> {
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    File::open(parent)?.sync_all()?;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn sync_parent_directory(_path: &Path) -> Result<(), DurableLogError> {
+    Ok(())
 }
 
 fn write_file_header(file: &mut File) -> Result<(), DurableLogError> {

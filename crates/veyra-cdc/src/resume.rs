@@ -8,7 +8,7 @@ use crate::snapshot::{SnapshotError, parse_pg_lsn};
 /// A checked proof that a logical slot can resume from one exact local LSN.
 ///
 /// Fields are private so callers cannot manufacture a proof without inspecting
-/// the current PostgreSQL slot state.
+/// the current `PostgreSQL` slot state.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReplicationStartProof {
     slot: String,
@@ -30,20 +30,20 @@ impl ReplicationStartProof {
         self.requested_lsn
     }
 
-    /// Oldest WAL location PostgreSQL currently guarantees for the slot.
+    /// Oldest WAL location `PostgreSQL` currently guarantees for the slot.
     #[must_use]
     pub const fn restart_lsn(&self) -> LogSequenceNumber {
         self.restart_lsn
     }
 
-    /// Slot position PostgreSQL already considers confirmed by the consumer.
+    /// Slot position `PostgreSQL` already considers confirmed by the consumer.
     #[must_use]
     pub const fn confirmed_flush_lsn(&self) -> LogSequenceNumber {
         self.confirmed_flush_lsn
     }
 }
 
-/// Proves that PostgreSQL still retains every WAL byte required to resume from
+/// Proves that `PostgreSQL` still retains every WAL byte required to resume from
 /// `requested_lsn`, and that server-side consumer progress has not moved beyond
 /// Veyra's local checkpoint.
 ///
@@ -110,8 +110,7 @@ fn validate_resume_state(
     let restart_text = restart_text.ok_or(ResumeFenceError::MissingRestartLsn)?;
     let confirmed_text = confirmed_text.ok_or(ResumeFenceError::MissingConfirmedFlushLsn)?;
     let restart_lsn = parse_pg_lsn(restart_text).map_err(ResumeFenceError::InvalidLsn)?;
-    let confirmed_flush_lsn =
-        parse_pg_lsn(confirmed_text).map_err(ResumeFenceError::InvalidLsn)?;
+    let confirmed_flush_lsn = parse_pg_lsn(confirmed_text).map_err(ResumeFenceError::InvalidLsn)?;
 
     if requested_lsn < restart_lsn {
         return Err(ResumeFenceError::RequestedBeforeRestart {
@@ -169,20 +168,39 @@ impl fmt::Display for ResumeFenceError {
             Self::Postgres(error) => write!(formatter, "PostgreSQL resume-fence error: {error}"),
             Self::InvalidLsn(error) => write!(formatter, "invalid slot LSN: {error}"),
             Self::EmptySlotName => formatter.write_str("logical replication slot name is empty"),
-            Self::SlotNotFound(slot) => write!(formatter, "logical replication slot '{slot}' was not found"),
-            Self::UnexpectedPlugin(plugin) => write!(formatter, "logical slot uses unsupported plugin '{plugin}'"),
-            Self::SlotAlreadyActive(slot) => write!(formatter, "logical replication slot '{slot}' is already active"),
-            Self::MissingWalStatus => formatter.write_str("logical replication slot has no WAL retention status"),
-            Self::UnsafeWalStatus(status) => write!(formatter, "logical replication slot WAL status '{status}' cannot prove retained WAL"),
-            Self::MissingRestartLsn => formatter.write_str("logical replication slot has no restart LSN"),
-            Self::MissingConfirmedFlushLsn => formatter.write_str("logical replication slot has no confirmed flush LSN"),
+            Self::SlotNotFound(slot) => {
+                write!(formatter, "logical replication slot '{slot}' was not found")
+            }
+            Self::UnexpectedPlugin(plugin) => {
+                write!(formatter, "logical slot uses unsupported plugin '{plugin}'")
+            }
+            Self::SlotAlreadyActive(slot) => write!(
+                formatter,
+                "logical replication slot '{slot}' is already active"
+            ),
+            Self::MissingWalStatus => {
+                formatter.write_str("logical replication slot has no WAL retention status")
+            }
+            Self::UnsafeWalStatus(status) => write!(
+                formatter,
+                "logical replication slot WAL status '{status}' cannot prove retained WAL"
+            ),
+            Self::MissingRestartLsn => {
+                formatter.write_str("logical replication slot has no restart LSN")
+            }
+            Self::MissingConfirmedFlushLsn => {
+                formatter.write_str("logical replication slot has no confirmed flush LSN")
+            }
             Self::RequestedBeforeRestart { requested, restart } => write!(
                 formatter,
                 "CDC_GAP: requested LSN {} precedes slot restart LSN {}",
                 requested.get(),
                 restart.get()
             ),
-            Self::ServerConfirmedAheadOfLocal { requested, confirmed } => write!(
+            Self::ServerConfirmedAheadOfLocal {
+                requested,
+                confirmed,
+            } => write!(
                 formatter,
                 "CDC_GAP: server confirmed LSN {} is ahead of local resume LSN {}",
                 confirmed.get(),
@@ -241,13 +259,69 @@ mod tests {
     #[test]
     fn unknown_or_unsafe_slot_semantics_fail_closed() {
         let cases = [
-            validate_resume_state("slot", LogSequenceNumber::new(0x20), Some("0/10"), Some("0/20"), Some("reserved"), false, "test_decoding"),
-            validate_resume_state("slot", LogSequenceNumber::new(0x20), Some("0/10"), Some("0/20"), Some("reserved"), true, "pgoutput"),
-            validate_resume_state("slot", LogSequenceNumber::new(0x20), Some("0/10"), Some("0/20"), None, false, "pgoutput"),
-            validate_resume_state("slot", LogSequenceNumber::new(0x20), Some("0/10"), Some("0/20"), Some("unreserved"), false, "pgoutput"),
-            validate_resume_state("slot", LogSequenceNumber::new(0x20), Some("0/10"), Some("0/20"), Some("lost"), false, "pgoutput"),
-            validate_resume_state("slot", LogSequenceNumber::new(0x20), None, Some("0/20"), Some("reserved"), false, "pgoutput"),
-            validate_resume_state("slot", LogSequenceNumber::new(0x20), Some("0/10"), None, Some("reserved"), false, "pgoutput"),
+            validate_resume_state(
+                "slot",
+                LogSequenceNumber::new(0x20),
+                Some("0/10"),
+                Some("0/20"),
+                Some("reserved"),
+                false,
+                "test_decoding",
+            ),
+            validate_resume_state(
+                "slot",
+                LogSequenceNumber::new(0x20),
+                Some("0/10"),
+                Some("0/20"),
+                Some("reserved"),
+                true,
+                "pgoutput",
+            ),
+            validate_resume_state(
+                "slot",
+                LogSequenceNumber::new(0x20),
+                Some("0/10"),
+                Some("0/20"),
+                None,
+                false,
+                "pgoutput",
+            ),
+            validate_resume_state(
+                "slot",
+                LogSequenceNumber::new(0x20),
+                Some("0/10"),
+                Some("0/20"),
+                Some("unreserved"),
+                false,
+                "pgoutput",
+            ),
+            validate_resume_state(
+                "slot",
+                LogSequenceNumber::new(0x20),
+                Some("0/10"),
+                Some("0/20"),
+                Some("lost"),
+                false,
+                "pgoutput",
+            ),
+            validate_resume_state(
+                "slot",
+                LogSequenceNumber::new(0x20),
+                None,
+                Some("0/20"),
+                Some("reserved"),
+                false,
+                "pgoutput",
+            ),
+            validate_resume_state(
+                "slot",
+                LogSequenceNumber::new(0x20),
+                Some("0/10"),
+                None,
+                Some("reserved"),
+                false,
+                "pgoutput",
+            ),
         ];
         for result in cases {
             assert!(result.is_err());
@@ -257,15 +331,39 @@ mod tests {
     #[test]
     fn gaps_and_invalid_lsn_fail_closed() {
         assert!(matches!(
-            validate_resume_state("slot", LogSequenceNumber::new(0x0F), Some("0/10"), Some("0/0F"), Some("reserved"), false, "pgoutput"),
+            validate_resume_state(
+                "slot",
+                LogSequenceNumber::new(0x0F),
+                Some("0/10"),
+                Some("0/0F"),
+                Some("reserved"),
+                false,
+                "pgoutput"
+            ),
             Err(ResumeFenceError::RequestedBeforeRestart { .. })
         ));
         assert!(matches!(
-            validate_resume_state("slot", LogSequenceNumber::new(0x1F), Some("0/10"), Some("0/20"), Some("reserved"), false, "pgoutput"),
+            validate_resume_state(
+                "slot",
+                LogSequenceNumber::new(0x1F),
+                Some("0/10"),
+                Some("0/20"),
+                Some("reserved"),
+                false,
+                "pgoutput"
+            ),
             Err(ResumeFenceError::ServerConfirmedAheadOfLocal { .. })
         ));
         assert!(matches!(
-            validate_resume_state("slot", LogSequenceNumber::new(0x20), Some("bad"), Some("0/20"), Some("reserved"), false, "pgoutput"),
+            validate_resume_state(
+                "slot",
+                LogSequenceNumber::new(0x20),
+                Some("bad"),
+                Some("0/20"),
+                Some("reserved"),
+                false,
+                "pgoutput"
+            ),
             Err(ResumeFenceError::InvalidLsn(_))
         ));
     }
