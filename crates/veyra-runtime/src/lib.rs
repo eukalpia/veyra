@@ -137,10 +137,7 @@ impl RuntimeSnapshot {
     /// Applies read-your-writes admission semantics.
     ///
     /// `Ok(())` means the runtime is ready and its applied LSN is at least `minimum_lsn`.
-    pub fn prove_queryable(
-        &self,
-        minimum_lsn: LogSequenceNumber,
-    ) -> Result<(), CannotProveReason> {
+    pub fn prove_queryable(&self, minimum_lsn: LogSequenceNumber) -> Result<(), CannotProveReason> {
         if let Some(reason) = self.cannot_prove {
             return Err(reason);
         }
@@ -273,10 +270,7 @@ mod tests {
         let before = state.snapshot();
         assert_eq!(before.phase(), ServicePhase::Starting);
 
-        state.publish(RuntimeSnapshot::ready(
-            GenerationId::new(1),
-            progress(10),
-        ));
+        state.publish(RuntimeSnapshot::ready(GenerationId::new(1), progress(10)));
 
         let after = state.snapshot();
         assert_eq!(after.phase(), ServicePhase::Ready);
@@ -286,10 +280,7 @@ mod tests {
 
     #[test]
     fn debug_output_contains_current_snapshot() {
-        let state = RuntimeState::new(RuntimeSnapshot::ready(
-            GenerationId::new(2),
-            progress(20),
-        ));
+        let state = RuntimeState::new(RuntimeSnapshot::ready(GenerationId::new(2), progress(20)));
 
         let debug = format!("{state:?}");
         assert!(debug.contains("RuntimeState"));

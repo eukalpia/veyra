@@ -79,9 +79,7 @@ fn health_response(snapshot: &RuntimeSnapshot) -> HealthResponse {
     HealthResponse {
         alive: true,
         phase: snapshot.phase(),
-        can_prove_result: snapshot
-            .prove_queryable(LogSequenceNumber::ZERO)
-            .is_ok(),
+        can_prove_result: snapshot.prove_queryable(LogSequenceNumber::ZERO).is_ok(),
         generation: snapshot.generation().get(),
         applied_lsn: snapshot.progress().applied().get(),
         published_lsn: snapshot.progress().published().get(),
@@ -131,10 +129,7 @@ mod tests {
             ProjectionProgress::at(LogSequenceNumber::new(55)),
         ));
 
-        assert_eq!(
-            status_for(runtime, "/health/ready").await?,
-            StatusCode::OK
-        );
+        assert_eq!(status_for(runtime, "/health/ready").await?, StatusCode::OK);
         Ok(())
     }
 
@@ -152,7 +147,6 @@ mod tests {
         );
         Ok(())
     }
-
 
     #[tokio::test]
     async fn serve_runs_on_an_existing_listener() -> io::Result<()> {

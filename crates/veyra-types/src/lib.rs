@@ -245,10 +245,7 @@ mod tests {
             LogSequenceNumber::ZERO,
         );
 
-        assert_eq!(
-            error,
-            Err(ProjectionProgressError::DurableAheadOfReceived)
-        );
+        assert_eq!(error, Err(ProjectionProgressError::DurableAheadOfReceived));
     }
 
     #[test]
@@ -272,10 +269,7 @@ mod tests {
             LogSequenceNumber::new(2),
         );
 
-        assert_eq!(
-            error,
-            Err(ProjectionProgressError::PublishedAheadOfApplied)
-        );
+        assert_eq!(error, Err(ProjectionProgressError::PublishedAheadOfApplied));
     }
 
     #[test]
