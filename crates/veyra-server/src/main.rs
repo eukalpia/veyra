@@ -9,7 +9,7 @@ use tracing_subscriber::EnvFilter;
 use veyra_server::{bootstrap_runtime, serve};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .with_target(true)
