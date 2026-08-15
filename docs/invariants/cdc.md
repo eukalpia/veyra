@@ -1,63 +1,39 @@
 # CDC invariants
 
-These invariants are executable contracts for `veyra-cdc`.
+## C1 — transaction atomicity
+`CdcAssembler` emits a transaction only after COMMIT.
 
-## C1 — PostgreSQL transaction atomicity
-
-`CdcAssembler` emits `TransactionBatch` only after a matching `COMMIT`. `BEGIN`, `XLogData`, and transactional logical messages are not returned as committed state.
-
-Verification: unit sequence tests and live PostgreSQL integration test.
-
-## C2 — Partial transactions are never durable
-
-Only a complete `TransactionBatch` reaches `DurableCdcLog::append`.
-
-Verification: assembler type boundary and tests.
+## C2 — partial transactions are never durable
+Only complete `TransactionBatch` values can enter the durable journal.
 
 ## C3 — feedback never outruns local durability
-
-The CDC pump order is fixed: encode -> append -> write -> `sync_all` -> advance `durable_lsn` -> `update_applied_lsn`.
-
-Verification: code ordering plus restart integration tests.
+Commit ordering is assemble -> append -> write -> `sync_all` -> durable LSN -> PostgreSQL feedback.
 
 ## C4 — duplicate delivery is idempotent
-
-An already-durable LSN is accepted only when deterministic transaction bytes match the stored bytes exactly. A conflict fails closed.
-
-Verification: exact historical duplicate and conflicting replay tests.
+An existing LSN is accepted only when canonical bytes exactly match durable history.
 
 ## C5 — torn final append is recoverable
+Only an incomplete final record may be truncated automatically. Complete corruption fails closed.
 
-An incomplete final record header or payload is truncated to the last complete record. Complete-record checksum corruption is never repaired silently.
-
-Verification: torn-header, torn-payload, and checksum corruption tests.
-
-## C6 — durable log order is strictly monotonic
-
-Complete records on disk must have strictly increasing end LSNs. Any non-monotonic persisted sequence is corrupt.
-
-Verification: scanner runtime assertion and corruption tests.
+## C6 — durable journal order is strictly monotonic
+Complete on-disk records have strictly increasing end LSNs.
 
 ## C7 — progress order is always valid
+`published_lsn <= applied_lsn <= durable_lsn <= received_lsn` is revalidated after transitions.
 
-`published_lsn <= applied_lsn <= durable_lsn <= received_lsn` is revalidated after every transition.
-
-Verification: `ProjectionProgress`, `CdcProgressTracker`, property/unit tests.
-
-## C8 — snapshot catch-up cannot intentionally leave a WAL gap
-
-Catch-up begins from the logical slot LSN captured before opening the snapshot, accepting overlap rather than a gap.
-
-Verification: live integration transaction written while the repeatable-read snapshot is still open.
+## C8 — bootstrap chooses overlap over a WAL gap
+Snapshot catch-up starts from the slot boundary captured before the repeatable-read snapshot.
 
 ## C9 — corrupt CDC data is never served
-
-Unknown format versions, bad CRCs, invalid bounds, unknown item tags and invalid transaction semantics return errors.
-
-Verification: codec/log tests and fuzz target.
+Unknown formats, invalid bounds, CRC failures and invalid transaction semantics return errors.
 
 ## C10 — CDC work is bounded
+Transaction item count, item bytes, message prefix bytes and encoded bytes have explicit limits.
 
-Per-transaction item count, item bytes, message prefix bytes, and encoded bytes have explicit limits checked before or during allocation.
+## C11 — replication resume must be proven
+Before `START_REPLICATION`, slot plugin, activity, WAL status, restart LSN and confirmed-flush LSN are checked. If the server has discarded or confirmed beyond Veyra's local checkpoint, Veyra returns a fail-closed CDC gap instead of starting from an ambiguous position.
 
-Verification: limit tests and fuzz target.
+## C12 — a newly created durable journal survives metadata flush boundaries
+The journal file is `sync_all`'d before use; Unix additionally fsyncs the parent directory after first creation. PostgreSQL feedback can only happen after journal initialization and transaction durability complete.
+
+Each invariant is covered by unit, corruption, fuzz, Miri or live PostgreSQL tests where applicable. No invariant is weakened to improve benchmark numbers.

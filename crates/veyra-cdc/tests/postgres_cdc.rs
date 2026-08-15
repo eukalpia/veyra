@@ -7,8 +7,8 @@ use tokio::time::timeout;
 use tokio_postgres::{Client, NoTls};
 use veyra_cdc::{
     BatchLimits, CdcAssembler, CdcProgressTracker, CdcPump, CdcPumpEvent, DurableCdcLog,
-    PostgresReplicationStream, SnapshotBoundary, TransactionBatch, TransactionItem,
-    begin_consistent_snapshot,
+    PostgresReplicationStream, ResumeFenceError, SnapshotBoundary, TransactionBatch,
+    TransactionItem, begin_consistent_snapshot, prove_replication_start,
 };
 use veyra_types::LogSequenceNumber;
 
@@ -120,13 +120,15 @@ async fn establish_snapshot_overlap(
 }
 
 async fn start_pump(
+    control: &Client,
     log_path: &Path,
     start_lsn: LogSequenceNumber,
     progress: CdcProgressTracker,
 ) -> Result<CdcPump, TestError> {
     let (log, outcome) = DurableCdcLog::open(log_path, BatchLimits::default())?;
     assert!(outcome.last_durable_lsn <= start_lsn || start_lsn == LogSequenceNumber::ZERO);
-    let stream = PostgresReplicationStream::connect(replication_config(), start_lsn).await?;
+    let proof = prove_replication_start(control, SLOT, start_lsn).await?;
+    let stream = PostgresReplicationStream::connect(replication_config(), proof).await?;
     Ok(CdcPump::new(
         stream,
         CdcAssembler::new(BatchLimits::default()),
@@ -195,11 +197,18 @@ async fn snapshot_catchup_restart_and_duplicate_delivery_are_gap_free() -> Resul
     let (writer, writer_task) = connect(&url).await?;
     prepare_fixture(&control).await?;
 
+    assert!(matches!(
+        prove_replication_start(&control, SLOT, LogSequenceNumber::ZERO).await,
+        Err(ResumeFenceError::ServerConfirmedAheadOfLocal { .. }
+            | ResumeFenceError::RequestedBeforeRestart { .. })
+    ));
+
     let boundary = establish_snapshot_overlap(&mut control, &writer).await?;
     let directory = tempdir()?;
     let log_path = directory.path().join("cdc.log");
 
     let mut first_pump = start_pump(
+        &control,
         &log_path,
         boundary.replay_from_lsn(),
         CdcProgressTracker::ZERO,
@@ -218,7 +227,7 @@ async fn snapshot_catchup_restart_and_duplicate_delivery_are_gap_free() -> Resul
 
     let progress =
         CdcProgressTracker::recover(first_lsn, LogSequenceNumber::ZERO, LogSequenceNumber::ZERO)?;
-    let mut second_pump = start_pump(&log_path, first_lsn, progress).await?;
+    let mut second_pump = start_pump(&control, &log_path, first_lsn, progress).await?;
     let second_lsn = consume_fresh_after_restart(&mut second_pump, first_lsn).await?;
     assert!(second_lsn > first_lsn);
 

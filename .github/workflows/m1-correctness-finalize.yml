@@ -1,0 +1,75 @@
+name: M1 Correctness Finalize
+
+on:
+  push:
+    branches:
+      - agent/m1-cdc
+
+permissions:
+  contents: write
+
+concurrency:
+  group: m1-correctness-finalize-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VEYRA_RUST_VERSION: "1.97.1"
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/m1-cdc
+      - name: Install pinned Rust quality tools
+        run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal --component rustfmt --component clippy
+      - name: Add durable journal directory sync
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("crates/veyra-cdc/src/durable.rs")
+          text = path.read_text()
+          old = "        if length == 0 {\n            write_file_header(&mut file)?;\n        } else {"
+          new = "        if length == 0 {\n            write_file_header(&mut file)?;\n            sync_parent_directory(&path)?;\n        } else {"
+          if old not in text:
+              raise SystemExit("durable initialization pattern not found")
+          text = text.replace(old, new, 1)
+          marker = "fn write_file_header(file: &mut File) -> Result<(), DurableLogError> {"
+          helper = '''#[cfg(unix)]
+fn sync_parent_directory(path: &Path) -> Result<(), DurableLogError> {
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    File::open(parent)?.sync_all()?;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn sync_parent_directory(_path: &Path) -> Result<(), DurableLogError> {
+    // `File::sync_all` already requests data and metadata flush through the
+    // standard library. We do not add unsafe Win32 directory handles here.
+    Ok(())
+}
+
+'''
+          if marker not in text:
+              raise SystemExit("durable header writer marker not found")
+          text = text.replace(marker, helper + marker, 1)
+          path.write_text(text)
+      - name: Canonical format
+        run: cargo fmt --all
+      - name: Prove Clippy is warning-free
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: Run CDC library tests
+        run: cargo test -p veyra-cdc --lib --locked
+      - name: Commit and remove helper
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/veyra-cdc docs
+          git rm .github/workflows/m1-correctness-finalize.yml
+          git commit -m "fix: fail closed on unsafe CDC resume state"
+          git push origin HEAD:agent/m1-cdc

@@ -14,6 +14,7 @@ mod model;
 mod postgres;
 mod progress;
 mod pump;
+mod resume;
 mod snapshot;
 
 pub use assembler::{AssemblerAction, AssemblerError, CdcAssembler, CdcEvent};
@@ -25,6 +26,7 @@ pub use model::{
 pub use postgres::{PostgresCdcError, PostgresReplicationStream};
 pub use progress::{CdcProgressError, CdcProgressTracker};
 pub use pump::{CdcPump, CdcPumpError, CdcPumpEvent};
+pub use resume::{ReplicationStartProof, ResumeFenceError, prove_replication_start};
 pub use snapshot::{
     SnapshotBoundary, SnapshotError, SnapshotSession, begin_consistent_snapshot, parse_pg_lsn,
 };

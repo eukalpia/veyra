@@ -6,6 +6,7 @@ use pgwire_replication::{
 use veyra_types::LogSequenceNumber;
 
 use crate::assembler::CdcEvent;
+use crate::resume::ReplicationStartProof;
 use crate::snapshot::parse_pg_lsn;
 
 /// Live `PostgreSQL` logical replication transport.
@@ -17,12 +18,18 @@ pub struct PostgresReplicationStream {
 }
 
 impl PostgresReplicationStream {
-    /// Connects using an explicit Veyra start LSN.
+    /// Connects only with a fresh, checked replication-start proof.
     pub async fn connect(
         config: ReplicationConfig,
-        start_lsn: LogSequenceNumber,
+        proof: ReplicationStartProof,
     ) -> Result<Self, PostgresCdcError> {
-        let pg_lsn = to_pg_lsn(start_lsn)?;
+        if config.slot != proof.slot() {
+            return Err(PostgresCdcError::ResumeProofSlotMismatch {
+                config_slot: config.slot.clone(),
+                proof_slot: proof.slot().to_owned(),
+            });
+        }
+        let pg_lsn = to_pg_lsn(proof.requested_lsn())?;
         let client = ReplicationClient::connect(config.with_start_lsn(pg_lsn)).await?;
         Ok(Self { client })
     }
@@ -130,6 +137,10 @@ fn to_pg_lsn(value: LogSequenceNumber) -> Result<Lsn, PostgresCdcError> {
 pub enum PostgresCdcError {
     Transport(PgWireError),
     InvalidTransportLsn(String),
+    ResumeProofSlotMismatch {
+        config_slot: String,
+        proof_slot: String,
+    },
 }
 
 impl From<PgWireError> for PostgresCdcError {
@@ -145,6 +156,13 @@ impl fmt::Display for PostgresCdcError {
             Self::InvalidTransportLsn(value) => {
                 write!(formatter, "invalid replication transport LSN '{value}'")
             }
+            Self::ResumeProofSlotMismatch {
+                config_slot,
+                proof_slot,
+            } => write!(
+                formatter,
+                "replication config slot '{config_slot}' differs from resume proof slot '{proof_slot}'"
+            ),
         }
     }
 }
@@ -153,7 +171,7 @@ impl std::error::Error for PostgresCdcError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Transport(error) => Some(error),
-            Self::InvalidTransportLsn(_) => None,
+            Self::InvalidTransportLsn(_) | Self::ResumeProofSlotMismatch { .. } => None,
         }
     }
 }
@@ -253,9 +271,15 @@ mod tests {
     }
 
     #[test]
-    fn invalid_lsn_diagnostic_is_stable() {
-        let error = PostgresCdcError::InvalidTransportLsn("bad".to_owned());
-        assert_eq!(error.to_string(), "invalid replication transport LSN 'bad'");
-        assert!(std::error::Error::source(&error).is_none());
+    fn transport_error_diagnostics_are_stable() {
+        let invalid = PostgresCdcError::InvalidTransportLsn("bad".to_owned());
+        assert_eq!(invalid.to_string(), "invalid replication transport LSN 'bad'");
+        assert!(std::error::Error::source(&invalid).is_none());
+        let mismatch = PostgresCdcError::ResumeProofSlotMismatch {
+            config_slot: "a".to_owned(),
+            proof_slot: "b".to_owned(),
+        };
+        assert!(mismatch.to_string().contains("differs from resume proof"));
+        assert!(std::error::Error::source(&mismatch).is_none());
     }
 }
