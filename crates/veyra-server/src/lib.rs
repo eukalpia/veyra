@@ -34,7 +34,6 @@ pub struct HealthResponse {
 }
 
 /// Builds the administrative router.
-#[must_use]
 pub fn router(runtime: RuntimeState) -> Router {
     Router::new()
         .route("/health/live", get(liveness))

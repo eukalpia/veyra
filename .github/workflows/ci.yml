@@ -21,65 +21,22 @@ env:
   VEYRA_RUST_VERSION: "1.97.1"
 
 jobs:
-  commit-lockfiles:
-    name: Commit lockfiles (bootstrap)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/agent/m0-foundation-ci'
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.ref_name }}
-      - name: Detect existing committed lockfiles
-        id: lock-state
-        shell: bash
-        run: |
-          if git ls-files --error-unmatch Cargo.lock fuzz/Cargo.lock >/dev/null 2>&1; then
-            echo "tracked=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "tracked=false" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Install pinned stable Rust
-        if: steps.lock-state.outputs.tracked != 'true'
-        run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal
-      - name: Generate and commit lockfiles
-        if: steps.lock-state.outputs.tracked != 'true'
-        shell: bash
-        run: |
-          cargo generate-lockfile
-          (cd fuzz && cargo generate-lockfile)
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Cargo.lock fuzz/Cargo.lock
-          git diff --cached --quiet && exit 0
-          git commit -m "build: commit Cargo lockfiles"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
-
-  lockfile:
-    name: Generate lockfiles
+  lockfiles:
+    name: Lockfile integrity
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - name: Install pinned stable Rust
         run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal
-      - name: Generate workspace lockfile
-        run: cargo generate-lockfile
-      - name: Generate fuzz lockfile
+      - name: Verify workspace lockfile
+        run: cargo metadata --locked --format-version 1 --no-deps
+      - name: Verify fuzz lockfile
         working-directory: fuzz
-        run: cargo generate-lockfile
-      - name: Upload generated lockfiles
-        uses: actions/upload-artifact@v4
-        with:
-          name: generated-lockfiles
-          path: |
-            Cargo.lock
-            fuzz/Cargo.lock
-          if-no-files-found: error
-          retention-days: 1
+        run: cargo metadata --locked --format-version 1 --no-deps
 
   portable:
     name: Portable / ${{ matrix.target }}
+    needs: lockfiles
     strategy:
       fail-fast: false
       matrix:
@@ -99,24 +56,21 @@ jobs:
       - uses: actions/checkout@v6
       - name: Install pinned stable Rust
         run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal --component rustfmt --component clippy
-      - name: Generate deterministic dependency lock
-        run: cargo generate-lockfile
       - name: Format
         run: cargo fmt --all -- --check
       - name: Clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - name: Test
         run: cargo test --workspace --all-features --locked
 
   nextest:
     name: Nextest
+    needs: lockfiles
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - name: Install pinned stable Rust
         run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal
-      - name: Generate deterministic dependency lock
-        run: cargo generate-lockfile
       - name: Install cargo-nextest
         run: cargo install cargo-nextest --locked
       - name: Run nextest
@@ -124,13 +78,12 @@ jobs:
 
   coverage:
     name: Coverage >= 99%
+    needs: lockfiles
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - name: Install pinned stable Rust with coverage tools
         run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal --component llvm-tools-preview
-      - name: Generate deterministic dependency lock
-        run: cargo generate-lockfile
       - name: Install cargo-llvm-cov
         run: cargo install cargo-llvm-cov --locked
       - name: Enforce library coverage
@@ -139,6 +92,7 @@ jobs:
           --workspace
           --all-features
           --lib
+          --locked
           --fail-under-lines 99
           --fail-under-functions 99
           --fail-under-regions 99
@@ -153,17 +107,18 @@ jobs:
 
   security:
     name: Dependency policy
+    needs: lockfiles
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - name: Install pinned stable Rust
         run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal
-      - name: Generate deterministic dependency lock
-        run: cargo generate-lockfile
       - name: Install cargo-deny
         run: cargo install cargo-deny --locked
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
+      - name: Verify locked dependency graph
+        run: cargo metadata --locked --format-version 1 --no-deps
       - name: Deny policy
         run: cargo deny check
       - name: Advisory audit
@@ -171,6 +126,7 @@ jobs:
 
   docs:
     name: Rustdoc warnings
+    needs: lockfiles
     runs-on: ubuntu-24.04
     env:
       RUSTDOCFLAGS: "-D warnings"
@@ -178,13 +134,12 @@ jobs:
       - uses: actions/checkout@v6
       - name: Install pinned stable Rust
         run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal
-      - name: Generate deterministic dependency lock
-        run: cargo generate-lockfile
       - name: Build documentation
         run: cargo doc --workspace --all-features --no-deps --locked
 
   miri:
     name: Miri / veyra-types
+    needs: lockfiles
     runs-on: ubuntu-24.04
     env:
       PROPTEST_CASES: "16"
@@ -192,13 +147,12 @@ jobs:
       - uses: actions/checkout@v6
       - name: Install nightly Miri
         run: rustup toolchain install nightly --profile minimal --component miri
-      - name: Generate deterministic dependency lock
-        run: cargo generate-lockfile
       - name: Run Miri
-        run: cargo +nightly miri test -p veyra-types --lib -- --skip any_ordered_chain_is_accepted
+        run: cargo +nightly miri test -p veyra-types --lib --locked -- --skip any_ordered_chain_is_accepted
 
   fuzz-smoke:
     name: Fuzz smoke / projection progress
+    needs: lockfiles
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -206,9 +160,9 @@ jobs:
         run: rustup toolchain install nightly --profile minimal
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz --locked
-      - name: Generate fuzz dependency lock
+      - name: Verify fuzz lockfile
         working-directory: fuzz
-        run: cargo generate-lockfile
+        run: cargo metadata --locked --format-version 1 --no-deps
       - name: Run bounded fuzz smoke
         working-directory: fuzz
         run: cargo +nightly fuzz run projection_progress -- -runs=512
