@@ -4,7 +4,8 @@ use std::path::Path;
 use veyra_types::LogSequenceNumber;
 
 use crate::{
-    Journal, JournalError, ReplayDecision, StreamError, TransactionBatch, TransactionStream,
+    Journal, JournalError, PgOutputDecoder, PgOutputError, ReplayDecision, StreamError,
+    TransactionBatch, TransactionStream,
 };
 
 /// Result of consuming one logical replication protocol message.
@@ -65,7 +66,12 @@ impl DurableTransactionProcessor {
     where
         F: FnMut(&TransactionBatch) -> Result<(), E>,
     {
-        let Some(batch) = self.stream.push(input).map_err(ProcessorError::Stream)? else {
+        let message = PgOutputDecoder::decode(input).map_err(ProcessorError::Decode)?;
+        let Some(batch) = self
+            .stream
+            .consume(message)
+            .map_err(ProcessorError::Stream)?
+        else {
             return Ok(ProcessingOutcome::Pending);
         };
         let replay = self
@@ -104,6 +110,7 @@ impl DurableTransactionProcessor {
 
 #[derive(Debug)]
 pub enum ProcessorError<E> {
+    Decode(PgOutputError),
     Stream(StreamError),
     Journal(JournalError),
     Apply(E),
@@ -112,6 +119,7 @@ pub enum ProcessorError<E> {
 impl<E: fmt::Display> fmt::Display for ProcessorError<E> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Decode(error) => write!(formatter, "decode: {error}"),
             Self::Stream(error) => write!(formatter, "stream: {error}"),
             Self::Journal(error) => write!(formatter, "journal: {error}"),
             Self::Apply(error) => write!(formatter, "apply: {error}"),
@@ -223,7 +231,8 @@ mod tests {
     }
 
     #[test]
-    fn acknowledgement_is_returned_only_after_durable_successful_apply() -> Result<(), Box<dyn std::error::Error>> {
+    fn acknowledgement_is_returned_only_after_durable_successful_apply(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let journal_path = path("ack-order");
         let mut processor = DurableTransactionProcessor::open(&journal_path)?;
         let mut observed = Vec::new();
@@ -252,7 +261,8 @@ mod tests {
     }
 
     #[test]
-    fn failed_apply_yields_no_ack_but_restart_replays_durable_transaction() -> Result<(), Box<dyn std::error::Error>> {
+    fn failed_apply_yields_no_ack_but_restart_replays_durable_transaction(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let journal_path = path("failed-apply");
         {
             let mut processor = DurableTransactionProcessor::open(&journal_path)?;
@@ -283,7 +293,8 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_wal_is_reapplied_idempotently_before_ack() -> Result<(), Box<dyn std::error::Error>> {
+    fn duplicate_wal_is_reapplied_idempotently_before_ack(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let journal_path = path("duplicate");
         let mut processor = DurableTransactionProcessor::open(&journal_path)?;
         let mut applied = BTreeSet::new();
@@ -311,17 +322,38 @@ mod tests {
     }
 
     #[test]
-    fn corrupt_durable_journal_prevents_processor_start() -> Result<(), Box<dyn std::error::Error>> {
+    fn corrupt_durable_journal_prevents_processor_start(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let journal_path = path("corrupt");
         let mut file = OpenOptions::new()
             .create(true)
             .truncate(true)
             .write(true)
             .open(&journal_path)?;
-        file.write_all(b"BAD!")?;
+        let mut corrupt = [0_u8; 32];
+        corrupt[0..4].copy_from_slice(b"BAD!");
+        file.write_all(&corrupt)?;
         file.sync_data()?;
         drop(file);
         assert!(DurableTransactionProcessor::open(&journal_path).is_err());
+        let _ = fs::remove_file(journal_path);
+        Ok(())
+    }
+
+    #[test]
+    fn malformed_pgoutput_is_rejected_before_journal_or_apply(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let journal_path = path("decode");
+        let mut processor = DurableTransactionProcessor::open(&journal_path)?;
+        let mut applied = false;
+        let mut apply = |_batch: &TransactionBatch| -> Result<(), ApplyFailure> {
+            applied = true;
+            Ok(())
+        };
+        let result = processor.push(&[0xff], &mut apply);
+        assert!(matches!(result, Err(ProcessorError::Decode(_))));
+        assert!(!applied);
+        assert_eq!(processor.highest_durable_commit_lsn(), LogSequenceNumber::ZERO);
         let _ = fs::remove_file(journal_path);
         Ok(())
     }
