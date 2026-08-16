@@ -145,8 +145,14 @@ fn journal_boundaries_cover_debug_sources_and_corruption() {
     let first = batch(20, 21, 2);
     {
         let mut journal = Journal::open(&journal_path).unwrap_or_else(|_| unreachable!());
-        assert_eq!(journal.append(&first), Ok(ReplayDecision::Apply));
-        assert_eq!(journal.append(&first), Ok(ReplayDecision::Duplicate));
+        assert!(matches!(
+            journal.append(&first),
+            Ok(ReplayDecision::Apply)
+        ));
+        assert!(matches!(
+            journal.append(&first),
+            Ok(ReplayDecision::Duplicate)
+        ));
         assert!(format!("{journal:?}").contains("highest_commit_lsn"));
     }
     let bytes = read_all(&journal_path);
@@ -236,7 +242,7 @@ fn processor_live_and_stream_public_boundaries_are_exercised() {
         DurableTransactionProcessor::open(&journal_path).unwrap_or_else(|_| unreachable!());
     assert!(format!("{processor:?}").contains("DurableTransactionProcessor"));
     for error in [
-        ProcessorError::<ApplyFailure>::Decode(PgOutputError::UnknownMessage(0xff)),
+        ProcessorError::<ApplyFailure>::Decode(PgOutputError::UnsupportedMessage(0xff)),
         ProcessorError::Stream(StreamError::UnknownRelation(7)),
         ProcessorError::Apply(ApplyFailure),
         ProcessorError::Poisoned,
@@ -260,7 +266,7 @@ fn processor_live_and_stream_public_boundaries_are_exercised() {
     let mut state = LiveReplicationState::default();
     assert!(!state.transaction_open());
     let mut apply = |_batch: &TransactionBatch| -> Result<(), ApplyFailure> { Ok(()) };
-    assert_eq!(
+    assert!(matches!(
         process_replication_event(
             &mut processor,
             &mut checkpoint,
@@ -273,12 +279,12 @@ fn processor_live_and_stream_public_boundaries_are_exercised() {
             &mut apply,
         ),
         Ok(LiveEventOutcome::Continue)
-    );
+    ));
     assert_eq!(state.progress().received_lsn.get(), 5);
-    assert_eq!(
+    assert!(matches!(
         recover_checkpointed(&mut processor, &mut checkpoint, &mut apply),
         Ok(LogSequenceNumber::ZERO)
-    );
+    ));
 
     let errors = [
         LiveReplicationError::<ApplyFailure>::Checkpoint(CheckpointError::LengthOverflow),
