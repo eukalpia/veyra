@@ -30,12 +30,7 @@ impl RowChange {
         old_tuple: Option<Vec<u8>>,
         new_tuple: Option<Vec<u8>>,
     ) -> Self {
-        Self {
-            relation_id,
-            kind,
-            old_tuple,
-            new_tuple,
-        }
+        Self { relation_id, kind, old_tuple, new_tuple }
     }
 }
 
@@ -43,7 +38,7 @@ impl RowChange {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct TransactionBatch {
     xid: u32,
-    begin_lsn: LogSequenceNumber,
+    final_lsn: LogSequenceNumber,
     commit_lsn: LogSequenceNumber,
     end_lsn: LogSequenceNumber,
     changes: Vec<RowChange>,
@@ -52,30 +47,21 @@ pub struct TransactionBatch {
 impl TransactionBatch {
     pub fn try_new(
         xid: u32,
-        begin_lsn: LogSequenceNumber,
+        final_lsn: LogSequenceNumber,
         commit_lsn: LogSequenceNumber,
         end_lsn: LogSequenceNumber,
         changes: Vec<RowChange>,
     ) -> Result<Self, TransactionValidationError> {
-        if commit_lsn < begin_lsn {
-            return Err(TransactionValidationError::CommitBeforeBegin);
-        }
         if end_lsn < commit_lsn {
             return Err(TransactionValidationError::EndBeforeCommit);
         }
-        Ok(Self {
-            xid,
-            begin_lsn,
-            commit_lsn,
-            end_lsn,
-            changes,
-        })
+        Ok(Self { xid, final_lsn, commit_lsn, end_lsn, changes })
     }
 
     #[must_use]
     pub const fn xid(&self) -> u32 { self.xid }
     #[must_use]
-    pub const fn begin_lsn(&self) -> LogSequenceNumber { self.begin_lsn }
+    pub const fn final_lsn(&self) -> LogSequenceNumber { self.final_lsn }
     #[must_use]
     pub const fn commit_lsn(&self) -> LogSequenceNumber { self.commit_lsn }
     #[must_use]
@@ -88,7 +74,7 @@ impl TransactionBatch {
     pub fn fingerprint(&self) -> u64 {
         let mut hash = 0xcbf2_9ce4_8422_2325_u64;
         feed_fingerprint(&mut hash, &self.xid.to_le_bytes());
-        feed_fingerprint(&mut hash, &self.begin_lsn.get().to_le_bytes());
+        feed_fingerprint(&mut hash, &self.final_lsn.get().to_le_bytes());
         feed_fingerprint(&mut hash, &self.commit_lsn.get().to_le_bytes());
         feed_fingerprint(&mut hash, &self.end_lsn.get().to_le_bytes());
         for change in &self.changes {
@@ -116,22 +102,16 @@ fn feed_fingerprint(hash: &mut u64, bytes: &[u8]) {
     }
 }
 
-fn usize_to_u64(value: usize) -> u64 {
-    u64::try_from(value).unwrap_or(u64::MAX)
-}
+fn usize_to_u64(value: usize) -> u64 { u64::try_from(value).unwrap_or(u64::MAX) }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TransactionValidationError {
-    CommitBeforeBegin,
     EndBeforeCommit,
 }
 
 impl fmt::Display for TransactionValidationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::CommitBeforeBegin => "commit_lsn is before begin_lsn",
-            Self::EndBeforeCommit => "end_lsn is before commit_lsn",
-        })
+        formatter.write_str("end_lsn is before commit_lsn")
     }
 }
 impl std::error::Error for TransactionValidationError {}
@@ -139,7 +119,7 @@ impl std::error::Error for TransactionValidationError {}
 #[derive(Clone, Debug)]
 struct OpenTransaction {
     xid: u32,
-    begin_lsn: LogSequenceNumber,
+    final_lsn: LogSequenceNumber,
     changes: Vec<RowChange>,
 }
 
@@ -156,11 +136,11 @@ impl TransactionBuilder {
         Self { open: None, last_commit_lsn: LogSequenceNumber::ZERO }
     }
 
-    pub fn begin(&mut self, xid: u32, begin_lsn: LogSequenceNumber) -> Result<(), TransactionBuildError> {
+    pub fn begin(&mut self, xid: u32, final_lsn: LogSequenceNumber) -> Result<(), TransactionBuildError> {
         if self.open.is_some() {
             return Err(TransactionBuildError::NestedTransaction);
         }
-        self.open = Some(OpenTransaction { xid, begin_lsn, changes: Vec::new() });
+        self.open = Some(OpenTransaction { xid, final_lsn, changes: Vec::new() });
         Ok(())
     }
 
@@ -183,7 +163,7 @@ impl TransactionBuilder {
             self.open = Some(open);
             return Err(TransactionBuildError::CommitLsnRegressed);
         }
-        let batch = TransactionBatch::try_new(open.xid, open.begin_lsn, commit_lsn, end_lsn, open.changes)
+        let batch = TransactionBatch::try_new(open.xid, open.final_lsn, commit_lsn, end_lsn, open.changes)
             .map_err(TransactionBuildError::InvalidTransaction)?;
         self.last_commit_lsn = commit_lsn;
         Ok(batch)
@@ -226,20 +206,19 @@ mod tests {
 
     #[test]
     fn batch_contract_and_fingerprint_are_deterministic() {
-        let batch = TransactionBatch::try_new(9, lsn(10), lsn(20), lsn(21), vec![change(1)])
+        let batch = TransactionBatch::try_new(9, lsn(20), lsn(20), lsn(21), vec![change(1)])
             .unwrap_or_else(|_| unreachable!());
-        assert_eq!((batch.xid(), batch.begin_lsn().get(), batch.commit_lsn().get(), batch.end_lsn().get()), (9, 10, 20, 21));
+        assert_eq!((batch.xid(), batch.final_lsn().get(), batch.commit_lsn().get(), batch.end_lsn().get()), (9, 20, 20, 21));
         assert_eq!(batch.changes().len(), 1);
         assert_eq!(batch.fingerprint(), batch.clone().fingerprint());
-        let different = TransactionBatch::try_new(9, lsn(10), lsn(20), lsn(21), vec![change(2)])
+        let different = TransactionBatch::try_new(9, lsn(20), lsn(20), lsn(21), vec![change(2)])
             .unwrap_or_else(|_| unreachable!());
         assert_ne!(batch.fingerprint(), different.fingerprint());
     }
 
     #[test]
-    fn batch_rejects_invalid_lsn_order() {
-        assert_eq!(TransactionBatch::try_new(1, lsn(2), lsn(1), lsn(1), Vec::new()), Err(TransactionValidationError::CommitBeforeBegin));
-        assert_eq!(TransactionBatch::try_new(1, lsn(1), lsn(3), lsn(2), Vec::new()), Err(TransactionValidationError::EndBeforeCommit));
+    fn batch_rejects_end_before_commit() {
+        assert_eq!(TransactionBatch::try_new(1, lsn(3), lsn(3), lsn(2), Vec::new()), Err(TransactionValidationError::EndBeforeCommit));
     }
 
     #[test]
@@ -247,11 +226,12 @@ mod tests {
         let mut builder = TransactionBuilder::new();
         assert_eq!(builder.push(change(1)), Err(TransactionBuildError::ChangeOutsideTransaction));
         assert_eq!(builder.commit(lsn(1), lsn(1)), Err(TransactionBuildError::CommitWithoutBegin));
-        builder.begin(4, lsn(10)).unwrap_or_else(|_| unreachable!());
+        builder.begin(4, lsn(20)).unwrap_or_else(|_| unreachable!());
         assert!(builder.is_open());
-        assert_eq!(builder.begin(5, lsn(11)), Err(TransactionBuildError::NestedTransaction));
+        assert_eq!(builder.begin(5, lsn(21)), Err(TransactionBuildError::NestedTransaction));
         builder.push(change(1)).unwrap_or_else(|_| unreachable!());
         let batch = builder.commit(lsn(20), lsn(21)).unwrap_or_else(|_| unreachable!());
+        assert_eq!(batch.final_lsn(), lsn(20));
         assert_eq!(batch.changes().len(), 1);
         assert_eq!(builder.last_commit_lsn(), lsn(20));
         assert!(!builder.is_open());
@@ -260,9 +240,9 @@ mod tests {
     #[test]
     fn commit_regression_keeps_transaction_open() {
         let mut builder = TransactionBuilder::new();
-        builder.begin(1, lsn(1)).unwrap_or_else(|_| unreachable!());
+        builder.begin(1, lsn(5)).unwrap_or_else(|_| unreachable!());
         let _ = builder.commit(lsn(5), lsn(5)).unwrap_or_else(|_| unreachable!());
-        builder.begin(2, lsn(2)).unwrap_or_else(|_| unreachable!());
+        builder.begin(2, lsn(4)).unwrap_or_else(|_| unreachable!());
         assert_eq!(builder.commit(lsn(4), lsn(4)), Err(TransactionBuildError::CommitLsnRegressed));
         assert!(builder.is_open());
     }
@@ -270,13 +250,12 @@ mod tests {
     #[test]
     fn invalid_open_transaction_is_rejected() {
         let mut builder = TransactionBuilder::new();
-        builder.begin(1, lsn(10)).unwrap_or_else(|_| unreachable!());
-        assert_eq!(builder.commit(lsn(9), lsn(9)), Err(TransactionBuildError::InvalidTransaction(TransactionValidationError::CommitBeforeBegin)));
+        builder.begin(1, lsn(9)).unwrap_or_else(|_| unreachable!());
+        assert_eq!(builder.commit(lsn(9), lsn(8)), Err(TransactionBuildError::InvalidTransaction(TransactionValidationError::EndBeforeCommit)));
     }
 
     #[test]
     fn errors_have_stable_messages() {
-        assert_eq!(TransactionValidationError::CommitBeforeBegin.to_string(), "commit_lsn is before begin_lsn");
         assert_eq!(TransactionValidationError::EndBeforeCommit.to_string(), "end_lsn is before commit_lsn");
         assert_eq!(TransactionBuildError::NestedTransaction.to_string(), "nested transaction begin");
         assert_eq!(TransactionBuildError::ChangeOutsideTransaction.to_string(), "row change outside transaction");
