@@ -102,8 +102,7 @@ fn money_checked_arithmetic_is_explicit() {
         Err(PricingError::Overflow)
     );
 
-    let vector = PriceVector::try_new(0, vec![money(1)], 1)
-        .unwrap_or_else(|_| unreachable!());
+    let vector = PriceVector::try_new(0, vec![money(1)], 1).unwrap_or_else(|_| unreachable!());
     let negative = OccupancyAdjustment {
         per_adult_per_night: MoneyMicros::signed(-2),
         per_child_per_night: money(0),
