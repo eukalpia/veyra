@@ -145,10 +145,7 @@ fn journal_boundaries_cover_debug_sources_and_corruption() {
     let first = batch(20, 21, 2);
     {
         let mut journal = Journal::open(&journal_path).unwrap_or_else(|_| unreachable!());
-        assert!(matches!(
-            journal.append(&first),
-            Ok(ReplayDecision::Apply)
-        ));
+        assert!(matches!(journal.append(&first), Ok(ReplayDecision::Apply)));
         assert!(matches!(
             journal.append(&first),
             Ok(ReplayDecision::Duplicate)
