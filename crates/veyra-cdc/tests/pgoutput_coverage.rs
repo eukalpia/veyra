@@ -160,7 +160,7 @@ fn row_change_decoding_covers_insert_update_and_delete_shapes() {
                 && change.new_tuple.is_some()
     ));
 
-    for old_tag in [b'K', b'O'] {
+    for old_tag in *b"KO" {
         let decoded = PgOutputDecoder::decode(&update(
             old_tag,
             Some(&tuple(&[(b't', b"old")])),
@@ -184,7 +184,7 @@ fn row_change_decoding_covers_insert_update_and_delete_shapes() {
             if change.kind == ChangeKind::Update && change.old_tuple.is_none()
     ));
 
-    for old_tag in [b'K', b'O'] {
+    for old_tag in *b"KO" {
         let decoded = PgOutputDecoder::decode(&delete(old_tag, &tuple(&[(b'b', &[9])])))
             .unwrap_or_else(|_| unreachable!());
         assert!(matches!(
