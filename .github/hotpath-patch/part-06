@@ -1,0 +1,162 @@
++        let payload_offset = read_u64(&bytes[48..56]);
++        let payload_length = read_u64(&bytes[56..64]);
++        let checksum = read_u32(&bytes[64..68]);
++        let expected_offset = HEADER_LEN as u64;
+         if payload_offset != expected_offset {
+             return Err(SegmentError::InvalidPayloadOffset(payload_offset));
+         }
+-        let payload_len =
+-            usize::try_from(payload_length).map_err(|_| SegmentError::LengthOverflow)?;
+-        if payload_len > MAX_PAYLOAD_BYTES {
+-            return Err(SegmentError::PayloadTooLarge(payload_len));
++        if payload_length > MAX_PAYLOAD_BYTES as u64 {
++            return Err(SegmentError::PayloadTooLarge(MAX_PAYLOAD_BYTES + 1));
+         }
+-        let end = HEADER_LEN
+-            .checked_add(payload_len)
+-            .ok_or(SegmentError::LengthOverflow)?;
++        let payload_len = payload_length as usize;
++        let end = HEADER_LEN + payload_len;
+         if bytes.len() != end {
+             return Err(SegmentError::LengthMismatch {
+                 expected: end,
+@@ -214,13 +204,12 @@ impl Segment {
+     pub fn read(path: impl AsRef<Path>) -> Result<Self, SegmentError> {
+         let mut file = File::open(path)?;
+         let metadata = file.metadata()?;
+-        let len = usize::try_from(metadata.len()).map_err(|_| SegmentError::LengthOverflow)?;
+-        let max_file = HEADER_LEN
+-            .checked_add(MAX_PAYLOAD_BYTES)
+-            .ok_or(SegmentError::LengthOverflow)?;
+-        if len > max_file {
+-            return Err(SegmentError::PayloadTooLarge(len - HEADER_LEN));
++        let file_len = metadata.len();
++        let max_file = HEADER_LEN + MAX_PAYLOAD_BYTES;
++        if file_len > max_file as u64 {
++            return Err(SegmentError::PayloadTooLarge(MAX_PAYLOAD_BYTES + 1));
+         }
++        let len = file_len as usize;
+         let mut bytes = Vec::with_capacity(len);
+         file.read_to_end(&mut bytes)?;
+         Self::decode(&bytes)
+@@ -250,26 +239,16 @@ fn sync_parent(path: &Path) -> Result<(), SegmentError> {
+     Ok(())
+ }
+ 
+-fn read_u16(bytes: &[u8]) -> Result<u16, SegmentError> {
+-    Ok(u16::from_le_bytes(
+-        bytes
+-            .try_into()
+-            .map_err(|_| SegmentError::MalformedHeader)?,
+-    ))
++fn read_u16(bytes: &[u8]) -> u16 {
++    u16::from_le_bytes([bytes[0], bytes[1]])
+ }
+-fn read_u32(bytes: &[u8]) -> Result<u32, SegmentError> {
+-    Ok(u32::from_le_bytes(
+-        bytes
+-            .try_into()
+-            .map_err(|_| SegmentError::MalformedHeader)?,
+-    ))
++fn read_u32(bytes: &[u8]) -> u32 {
++    u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+ }
+-fn read_u64(bytes: &[u8]) -> Result<u64, SegmentError> {
+-    Ok(u64::from_le_bytes(
+-        bytes
+-            .try_into()
+-            .map_err(|_| SegmentError::MalformedHeader)?,
+-    ))
++fn read_u64(bytes: &[u8]) -> u64 {
++    u64::from_le_bytes([
++        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
++    ])
+ }
+ 
+ fn crc32c(bytes: &[u8]) -> u32 {
+diff --git a/crates/veyra-solver/src/lib.rs b/crates/veyra-solver/src/lib.rs
+index acdd529..fb0abf3 100644
+--- a/crates/veyra-solver/src/lib.rs
++++ b/crates/veyra-solver/src/lib.rs
+@@ -6,7 +6,7 @@
+ //! assignment space, validates every complete assignment with Veyra hard constraints, and fails
+ //! closed if the configured state budget cannot prove the optimum.
+ 
+-use core::fmt;
++use core::{cmp::Ordering, fmt};
+ use std::collections::BTreeSet;
+ use veyra_occupancy::validate_room;
+ use veyra_party::{BookingParty, CivilDate, ConstraintStrength, RoomingRelation, TravelerId};
+@@ -108,52 +108,17 @@ pub fn solve(
+         });
+     }
+ 
+-    context.valid.sort_by_key(solution_canonical_key);
++    context.valid.sort_by(compare_canonical);
+     context.valid.dedup();
+     let valid_solution_count = context.valid.len();
+     if valid_solution_count > config.max_solutions {
+         return Err(SolverError::TooManyValidSolutions(valid_solution_count));
+     }
+ 
+-    let cheapest = context
+-        .valid
+-        .iter()
+-        .min_by_key(|solution| {
+-            (
+-                solution.total_price,
+-                solution.rooms.len(),
+-                solution.soft_penalty,
+-                solution.rooms.clone(),
+-            )
+-        })
+-        .cloned()
+-        .ok_or(SolverError::InternalInvariant)?;
+-    let fewest = context
+-        .valid
+-        .iter()
+-        .min_by_key(|solution| {
+-            (
+-                solution.rooms.len(),
+-                solution.total_price,
+-                solution.soft_penalty,
+-                solution.rooms.clone(),
+-            )
+-        })
+-        .cloned()
+-        .ok_or(SolverError::InternalInvariant)?;
+-    let family = context
+-        .valid
+-        .iter()
+-        .min_by_key(|solution| {
+-            (
+-                solution.soft_penalty,
+-                solution.total_price,
+-                solution.rooms.len(),
+-                solution.rooms.clone(),
+-            )
+-        })
+-        .cloned()
+-        .ok_or(SolverError::InternalInvariant)?;
++    // The early empty-result return proves this slice is non-empty.
++    let cheapest = select_best(&context.valid, compare_cheapest);
++    let fewest = select_best(&context.valid, compare_fewest_rooms);
++    let family = select_best(&context.valid, compare_family_layout);
+ 
+     Ok(SolverResult {
+         explored_states: context.explored_states,
+@@ -181,9 +146,6 @@ fn validate_input(
+     offers: &[RoomOffer],
+     config: SolverConfig,
+ ) -> Result<(), SolverError> {
+-    if travelers.is_empty() {
+-        return Err(SolverError::EmptyParty);
+-    }
+     if travelers.len() > HARD_MAX_TRAVELERS {
+         return Err(SolverError::TooManyTravelers(travelers.len()));
+     }
+@@ -243,10 +205,7 @@ fn search(context: &mut SearchContext<'_>, traveler_index: usize) -> Result<(),
+     }
+ 
+     for room_index in 0..context.offers.len() {
+-        context.explored_states = context
