@@ -195,12 +195,14 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
     use std::collections::BTreeSet;
     use std::fs::{self, OpenOptions};
     use std::io::Write;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
+    use crate::RelationMetadata;
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     struct ApplyFailure;
@@ -478,14 +480,14 @@ mod tests {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let journal_path = path("decode");
         let mut processor = DurableTransactionProcessor::open(&journal_path)?;
-        let mut applied = false;
+        let applied = Cell::new(false);
         let mut apply = |_batch: &TransactionBatch| -> Result<(), ApplyFailure> {
-            applied = true;
+            applied.set(true);
             Ok(())
         };
         let result = processor.push(&[0xff], &mut apply);
         assert!(matches!(result, Err(ProcessorError::Decode(_))));
-        assert!(!applied);
+        assert!(!applied.get());
         assert!(processor.is_poisoned());
         assert_eq!(
             processor.highest_durable_commit_lsn(),
