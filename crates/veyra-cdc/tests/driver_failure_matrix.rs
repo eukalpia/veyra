@@ -83,8 +83,8 @@ fn driver_open_preserves_the_exact_durable_failure_layer() {
     let missing_root = missing_journal.with_extension("missing-directory");
     let mut apply = |_batch: &TransactionBatch| -> Result<(), ApplyFailure> { Ok(()) };
     let error = LiveReplicationDriver::open(
-        missing_root.join("journal"),
-        missing_root.join("checkpoint"),
+        &missing_root.join("journal"),
+        &missing_root.join("checkpoint"),
         &mut apply,
     )
     .err()
@@ -99,7 +99,7 @@ fn driver_open_preserves_the_exact_durable_failure_layer() {
     let checkpoint_root = missing_checkpoint.with_extension("missing-directory");
     let error = LiveReplicationDriver::open(
         &journal_path,
-        checkpoint_root.join("checkpoint"),
+        &checkpoint_root.join("checkpoint"),
         &mut apply,
     )
     .err()
