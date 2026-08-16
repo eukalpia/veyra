@@ -187,11 +187,7 @@ impl<E: fmt::Display> fmt::Display for ProcessorError<E> {
     }
 }
 
-impl<E> std::error::Error for ProcessorError<E>
-where
-    E: std::error::Error + 'static,
-{
-}
+impl<E> std::error::Error for ProcessorError<E> where E: std::error::Error + 'static {}
 
 #[cfg(test)]
 mod tests {
@@ -253,11 +249,7 @@ mod tests {
         bytes.push(b'N');
         bytes.extend_from_slice(&1_u16.to_be_bytes());
         bytes.push(b't');
-        bytes.extend_from_slice(
-            &u32::try_from(value.len())
-                .unwrap_or_default()
-                .to_be_bytes(),
-        );
+        bytes.extend_from_slice(&u32::try_from(value.len()).unwrap_or_default().to_be_bytes());
         bytes.extend_from_slice(value);
         bytes
     }
@@ -293,8 +285,8 @@ mod tests {
     }
 
     #[test]
-    fn acknowledgement_is_returned_only_after_durable_successful_apply(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn acknowledgement_is_returned_only_after_durable_successful_apply()
+    -> Result<(), Box<dyn std::error::Error>> {
         let journal_path = path("ack-order");
         let mut processor = DurableTransactionProcessor::open(&journal_path)?;
         let mut observed = Vec::new();
@@ -324,14 +316,13 @@ mod tests {
     }
 
     #[test]
-    fn failed_apply_yields_no_ack_and_poisoned_instance_cannot_continue(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn failed_apply_yields_no_ack_and_poisoned_instance_cannot_continue()
+    -> Result<(), Box<dyn std::error::Error>> {
         let journal_path = path("failed-apply");
         {
             let mut processor = DurableTransactionProcessor::open(&journal_path)?;
-            let mut fail = |_batch: &TransactionBatch| -> Result<(), ApplyFailure> {
-                Err(ApplyFailure)
-            };
+            let mut fail =
+                |_batch: &TransactionBatch| -> Result<(), ApplyFailure> { Err(ApplyFailure) };
             let result = feed_transaction(&mut processor, &mut fail);
             assert!(matches!(result, Err(ProcessorError::Apply(ApplyFailure))));
             assert!(processor.is_poisoned());
@@ -351,10 +342,7 @@ mod tests {
             applied.insert(batch.fingerprint());
             Ok(())
         };
-        assert_eq!(
-            restarted.recover(&mut apply)?,
-            LogSequenceNumber::new(21)
-        );
+        assert_eq!(restarted.recover(&mut apply)?, LogSequenceNumber::new(21));
         assert_eq!(applied.len(), 1);
         assert!(!restarted.is_poisoned());
         let _ = fs::remove_file(journal_path);
@@ -362,8 +350,8 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_wal_is_reapplied_idempotently_before_ack(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn duplicate_wal_is_reapplied_idempotently_before_ack() -> Result<(), Box<dyn std::error::Error>>
+    {
         let journal_path = path("duplicate");
         let mut processor = DurableTransactionProcessor::open(&journal_path)?;
         let mut applied = BTreeSet::new();
@@ -391,8 +379,8 @@ mod tests {
     }
 
     #[test]
-    fn consume_message_supports_structured_replication_transports(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn consume_message_supports_structured_replication_transports()
+    -> Result<(), Box<dyn std::error::Error>> {
         let journal_path = path("structured");
         let mut processor = DurableTransactionProcessor::open(&journal_path)?;
         let mut applied = 0_u32;
@@ -457,8 +445,8 @@ mod tests {
     }
 
     #[test]
-    fn corrupt_durable_journal_prevents_processor_start(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn corrupt_durable_journal_prevents_processor_start() -> Result<(), Box<dyn std::error::Error>>
+    {
         let journal_path = path("corrupt");
         let mut file = OpenOptions::new()
             .create(true)
@@ -476,8 +464,7 @@ mod tests {
     }
 
     #[test]
-    fn malformed_pgoutput_poisoning_prevents_later_ack(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn malformed_pgoutput_poisoning_prevents_later_ack() -> Result<(), Box<dyn std::error::Error>> {
         let journal_path = path("decode");
         let mut processor = DurableTransactionProcessor::open(&journal_path)?;
         let applied = Cell::new(false);
@@ -502,8 +489,7 @@ mod tests {
     }
 
     #[test]
-    fn failed_recovery_poisoning_requires_restart(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn failed_recovery_poisoning_requires_restart() -> Result<(), Box<dyn std::error::Error>> {
         let journal_path = path("recover-fail");
         {
             let mut processor = DurableTransactionProcessor::open(&journal_path)?;
@@ -511,7 +497,8 @@ mod tests {
             let _ = feed_transaction(&mut processor, &mut apply)?;
         }
         let mut restarted = DurableTransactionProcessor::open(&journal_path)?;
-        let mut fail = |_batch: &TransactionBatch| -> Result<(), ApplyFailure> { Err(ApplyFailure) };
+        let mut fail =
+            |_batch: &TransactionBatch| -> Result<(), ApplyFailure> { Err(ApplyFailure) };
         assert!(matches!(
             restarted.recover(&mut fail),
             Err(ProcessorError::Apply(ApplyFailure))
