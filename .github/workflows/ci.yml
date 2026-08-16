@@ -26,9 +26,6 @@ jobs:
         run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal --component rustfmt --component clippy
       - name: Generate workspace lockfile from manifests
         run: cargo generate-lockfile
-      - name: Canonicalize checked party fixture
-        shell: bash
-        run: python3 -c 'from pathlib import Path; p=Path("crates/veyra-party/src/lib.rs"); s=p.read_text(); old="        let mut builder = BookingParty::builder();\n        assert_eq!(builder.build(), Err(PartyError::EmptyParty));"; new="        let builder = BookingParty::builder();\n        assert_eq!(builder.build(), Err(PartyError::EmptyParty));"; assert old in s; p.write_text(s.replace(old,new,1))'
       - name: Canonicalize formatting
         run: cargo fmt --all
       - name: Verify formatting
@@ -42,7 +39,7 @@ jobs:
       - name: Commit canonical sources and lockfile when changed
         shell: bash
         run: |
-          paths=(Cargo.lock crates/veyra-cdc crates/veyra-segment crates/veyra-storage crates/veyra-availability crates/veyra-party crates/veyra-rules)
+          paths=(Cargo.toml Cargo.lock crates docs)
           if git diff --quiet -- "${paths[@]}"; then
             echo "Sources and Cargo.lock already current"
             exit 0
