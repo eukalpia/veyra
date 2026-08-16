@@ -89,9 +89,7 @@ fn recovery_truncates_every_incomplete_record_prefix() {
 fn every_truncated_transaction_payload_fails_closed_after_integrity_validation() {
     let record = valid_record();
     let payload_len = usize::try_from(u64::from_le_bytes(
-        record[8..16]
-            .try_into()
-            .unwrap_or_else(|_| unreachable!()),
+        record[8..16].try_into().unwrap_or_else(|_| unreachable!()),
     ))
     .unwrap_or_else(|_| unreachable!());
     let payload = &record[HEADER_LEN..HEADER_LEN + payload_len];
