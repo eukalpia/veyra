@@ -173,9 +173,11 @@ fn service_day_pricing_occupancy_and_ranking_errors_propagate() {
 fn restriction_and_budget_rejections_are_explainable_not_errors() {
     let p = party(1);
     let mut restricted = document(0, 2, 10);
-    restricted.restrictions =
-        compile_restrictions(RESTRICTION_SCHEMA_V1, &[RestrictionRule::MinStay(3)])
-            .unwrap_or_else(|_| unreachable!());
+    restricted.restrictions = compile_restrictions(
+        RESTRICTION_SCHEMA_V1,
+        &[RestrictionRule::MinStay(3), RestrictionRule::MaxStay(5)],
+    )
+    .unwrap_or_else(|_| unreachable!());
     let result = engine(restricted, 10)
         .search(&query(&p, 10))
         .unwrap_or_else(|_| unreachable!());
