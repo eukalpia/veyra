@@ -8,11 +8,11 @@
 
 use core::fmt;
 use veyra_availability::{AvailabilityError, AvailabilityIndex};
-use veyra_occupancy::{validate_room, OccupancyError};
+use veyra_occupancy::{OccupancyError, validate_room};
 use veyra_party::{BookingParty, CivilDate};
 use veyra_pricing::{MoneyMicros, OccupancyAdjustment, PriceVector, PricingError};
 use veyra_ranking::{
-    top_k, RankCandidate, RankedCandidate, RankingError, RankingProfile, MAX_TOP_K,
+    MAX_TOP_K, RankCandidate, RankedCandidate, RankingError, RankingProfile, top_k,
 };
 use veyra_restrictions::{CompiledRestrictions, RestrictionError};
 use veyra_rule_compiler::CompiledRule;
@@ -46,8 +46,8 @@ impl SearchEngine {
         availability: AvailabilityIndex,
         rooms: Vec<RoomDocument>,
     ) -> Result<Self, QueryError> {
-        let expected = usize::try_from(availability.room_count())
-            .map_err(|_| QueryError::CatalogInvariant)?;
+        let expected =
+            usize::try_from(availability.room_count()).map_err(|_| QueryError::CatalogInvariant)?;
         if rooms.len() != expected {
             return Err(QueryError::RoomDocumentCountMismatch {
                 expected,
@@ -150,10 +150,7 @@ impl SearchEngine {
                 .map_err(QueryError::Pricing)?;
             explain.priced_candidates += 1;
 
-            if query
-                .budget
-                .is_some_and(|budget| projected.total > budget)
-            {
+            if query.budget.is_some_and(|budget| projected.total > budget) {
                 continue;
             }
             explain.budget_candidates += 1;
@@ -169,8 +166,8 @@ impl SearchEngine {
         }
 
         explain.ranked_candidates = rank_candidates.len();
-        let ranked = top_k(query.ranking, &rank_candidates, query.limit)
-            .map_err(QueryError::Ranking)?;
+        let ranked =
+            top_k(query.ranking, &rank_candidates, query.limit).map_err(QueryError::Ranking)?;
         let hits = ranked.into_iter().map(hit_from_ranked).collect::<Vec<_>>();
         explain.returned = hits.len();
         Ok(SearchResult { hits, explain })
@@ -306,8 +303,10 @@ mod tests {
     use veyra_party::{AgeEvidence, Traveler, TravelerId};
     use veyra_pricing::MoneyMicros;
     use veyra_ranking::RankingKind;
-    use veyra_restrictions::{compile as compile_restrictions, RestrictionRule, RESTRICTION_SCHEMA_V1};
-    use veyra_rule_compiler::{compile as compile_rule, RULE_SCHEMA_V1};
+    use veyra_restrictions::{
+        RESTRICTION_SCHEMA_V1, RestrictionRule, compile as compile_restrictions,
+    };
+    use veyra_rule_compiler::{RULE_SCHEMA_V1, compile as compile_rule};
     use veyra_rules::Rule;
 
     fn date(y: i32, m: u8, d: u8) -> CivilDate {
@@ -331,12 +330,7 @@ mod tests {
         builder.build().unwrap_or_else(|_| unreachable!())
     }
 
-    fn room(
-        room_id: u32,
-        property_id: u32,
-        destination_id: u32,
-        nightly: i64,
-    ) -> RoomDocument {
+    fn room(room_id: u32, property_id: u32, destination_id: u32, nightly: i64) -> RoomDocument {
         RoomDocument {
             room_id,
             property_id,
@@ -372,8 +366,7 @@ mod tests {
     }
 
     fn engine() -> SearchEngine {
-        let mut availability =
-            AvailabilityIndex::new(10, 5, 3).unwrap_or_else(|_| unreachable!());
+        let mut availability = AvailabilityIndex::new(10, 5, 3).unwrap_or_else(|_| unreachable!());
         for room_id in 0..3 {
             for day in 10..15 {
                 availability
@@ -449,8 +442,7 @@ mod tests {
 
     #[test]
     fn catalog_and_query_bounds_fail_closed() {
-        let availability =
-            AvailabilityIndex::new(0, 1, 1).unwrap_or_else(|_| unreachable!());
+        let availability = AvailabilityIndex::new(0, 1, 1).unwrap_or_else(|_| unreachable!());
         assert!(matches!(
             SearchEngine::try_new(availability, Vec::new()),
             Err(QueryError::RoomDocumentCountMismatch { .. })
@@ -461,28 +453,24 @@ mod tests {
         assert_eq!(engine().search(&invalid), Err(QueryError::InvalidLimit(0)));
         let mut invalid = query(&party, None);
         invalid.check_out_day = invalid.check_in_day;
-        assert_eq!(
-            engine().search(&invalid),
-            Err(QueryError::InvalidStayRange)
-        );
+        assert_eq!(engine().search(&invalid), Err(QueryError::InvalidStayRange));
         let invalid = query(&party, Some(MoneyMicros::signed(-1)));
         assert_eq!(engine().search(&invalid), Err(QueryError::NegativeBudget));
     }
 
     #[test]
     fn missing_price_projection_fails_whole_query_closed() {
-        let mut availability =
-            AvailabilityIndex::new(10, 2, 1).unwrap_or_else(|_| unreachable!());
+        let mut availability = AvailabilityIndex::new(10, 2, 1).unwrap_or_else(|_| unreachable!());
         for day in 10..12 {
             availability
                 .set_available(day, 0, true)
                 .unwrap_or_else(|_| unreachable!());
         }
         let mut document = room(0, 1, 1, 1);
-        document.prices = PriceVector::try_new(20, vec![money(1); 2], 1)
-            .unwrap_or_else(|_| unreachable!());
-        let engine = SearchEngine::try_new(availability, vec![document])
-            .unwrap_or_else(|_| unreachable!());
+        document.prices =
+            PriceVector::try_new(20, vec![money(1); 2], 1).unwrap_or_else(|_| unreachable!());
+        let engine =
+            SearchEngine::try_new(availability, vec![document]).unwrap_or_else(|_| unreachable!());
         let party = party();
         assert_eq!(
             engine.search(&query(&party, None)),

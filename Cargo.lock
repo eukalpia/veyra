@@ -1121,6 +1121,27 @@ name = "veyra-pricing"
 version = "0.1.0"
 
 [[package]]
+name = "veyra-query"
+version = "0.1.0"
+dependencies = [
+ "veyra-availability",
+ "veyra-occupancy",
+ "veyra-party",
+ "veyra-pricing",
+ "veyra-ranking",
+ "veyra-restrictions",
+ "veyra-rule-compiler",
+ "veyra-rules",
+]
+
+[[package]]
+name = "veyra-ranking"
+version = "0.1.0"
+dependencies = [
+ "veyra-pricing",
+]
+
+[[package]]
 name = "veyra-restrictions"
 version = "0.1.0"
 

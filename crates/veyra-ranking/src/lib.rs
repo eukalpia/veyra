@@ -252,11 +252,7 @@ mod tests {
             ..candidate(1, 1, 1, 0, 500)
         };
         assert_eq!(
-            top_k(
-                RankingProfile::v1(RankingKind::Cheapest),
-                &[invalid],
-                1,
-            ),
+            top_k(RankingProfile::v1(RankingKind::Cheapest), &[invalid], 1,),
             Err(RankingError::InvalidNormalizedSignal(1))
         );
         let negative = RankCandidate {
@@ -264,11 +260,7 @@ mod tests {
             ..candidate(1, 2, 1, 0, 500)
         };
         assert_eq!(
-            top_k(
-                RankingProfile::v1(RankingKind::Cheapest),
-                &[negative],
-                1,
-            ),
+            top_k(RankingProfile::v1(RankingKind::Cheapest), &[negative], 1,),
             Err(RankingError::NegativeProjectedPrice(2))
         );
         assert_eq!(
