@@ -27,7 +27,10 @@ fn paths(label: &str) -> (PathBuf, PathBuf) {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
-    let base = format!("veyra-driver-failure-{label}-{}-{nanos}", std::process::id());
+    let base = format!(
+        "veyra-driver-failure-{label}-{}-{nanos}",
+        std::process::id()
+    );
     (
         std::env::temp_dir().join(format!("{base}.journal")),
         std::env::temp_dir().join(format!("{base}.checkpoint")),
@@ -40,12 +43,7 @@ fn batch() -> TransactionBatch {
         LogSequenceNumber::new(20),
         LogSequenceNumber::new(20),
         LogSequenceNumber::new(21),
-        vec![RowChange::new(
-            11,
-            ChangeKind::Insert,
-            None,
-            Some(vec![1]),
-        )],
+        vec![RowChange::new(11, ChangeKind::Insert, None, Some(vec![1]))],
     )
     .unwrap_or_else(|_| unreachable!())
 }
@@ -91,7 +89,10 @@ fn driver_open_preserves_the_exact_durable_failure_layer() {
     )
     .err()
     .unwrap_or_else(|| unreachable!());
-    assert!(matches!(error, LiveReplicationError::Journal(JournalError::Io(_))));
+    assert!(matches!(
+        error,
+        LiveReplicationError::Journal(JournalError::Io(_))
+    ));
 
     let (journal_path, _) = paths("checkpoint-open");
     Journal::open(&journal_path).unwrap_or_else(|_| unreachable!());
@@ -121,9 +122,9 @@ fn driver_open_preserves_the_exact_durable_failure_layer() {
         .unwrap_or_else(|| unreachable!());
     assert!(matches!(
         error,
-        LiveReplicationError::Processor(ProcessorError::Apply(
-            CheckpointApplyError::Apply(ApplyFailure)
-        ))
+        LiveReplicationError::Processor(ProcessorError::Apply(CheckpointApplyError::Apply(
+            ApplyFailure
+        )))
     ));
 
     let _ = std::fs::remove_file(journal_path);
@@ -156,7 +157,10 @@ fn rejected_events_are_counted_but_never_acknowledged() {
     ));
     assert_eq!(driver.summary().events_seen, 1);
     assert_eq!(driver.summary().acknowledgements, 0);
-    assert_eq!(driver.summary().progress.applied_lsn, LogSequenceNumber::ZERO);
+    assert_eq!(
+        driver.summary().progress.applied_lsn,
+        LogSequenceNumber::ZERO
+    );
 
     driver
         .process(
@@ -230,15 +234,21 @@ fn failed_commit_apply_keeps_driver_progress_unacknowledged() {
         .unwrap_or_else(|| unreachable!());
     assert!(matches!(
         error,
-        LiveReplicationError::Processor(ProcessorError::Apply(
-            CheckpointApplyError::Apply(ApplyFailure)
-        ))
+        LiveReplicationError::Processor(ProcessorError::Apply(CheckpointApplyError::Apply(
+            ApplyFailure
+        )))
     ));
     assert_eq!(applied.get(), 0);
     assert_eq!(driver.summary().events_seen, 4);
     assert_eq!(driver.summary().acknowledgements, 0);
-    assert_eq!(driver.summary().progress.applied_lsn, LogSequenceNumber::ZERO);
-    assert_eq!(driver.summary().progress.durable_lsn, LogSequenceNumber::ZERO);
+    assert_eq!(
+        driver.summary().progress.applied_lsn,
+        LogSequenceNumber::ZERO
+    );
+    assert_eq!(
+        driver.summary().progress.durable_lsn,
+        LogSequenceNumber::ZERO
+    );
 
     let _ = std::fs::remove_file(journal_path);
     let _ = std::fs::remove_file(checkpoint_path);
