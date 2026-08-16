@@ -19,12 +19,7 @@ fn incomplete_duplicate_and_out_of_range_bounds_fail_closed() {
         ),
         Err(RestrictionError::DuplicateRule("MAX_STAY"))
     );
-    for (minimum, maximum) in [
-        (0, 1),
-        (1, 0),
-        (2, 1),
-        (1, MAX_STAY_NIGHTS + 1),
-    ] {
+    for (minimum, maximum) in [(0, 1), (1, 0), (2, 1), (1, MAX_STAY_NIGHTS + 1)] {
         assert_eq!(
             compile(
                 RESTRICTION_SCHEMA_V1,
