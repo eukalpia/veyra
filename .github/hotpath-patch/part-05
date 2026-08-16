@@ -1,0 +1,147 @@
+-                let count = u16::try_from(context.count_age_range(*min_age, *max_age))
+-                    .map_err(|_| RuleError::CountOverflow)?;
++                let count = context.count_age_range(*min_age, *max_age) as u16;
+                 Ok((*min_count..=*max_count).contains(&count))
+             }
+             Self::RequireAdult {
+diff --git a/crates/veyra-rules/tests/coverage.rs b/crates/veyra-rules/tests/coverage.rs
+index 8bd8389..2b41595 100644
+--- a/crates/veyra-rules/tests/coverage.rs
++++ b/crates/veyra-rules/tests/coverage.rs
+@@ -92,3 +92,65 @@ fn boolean_short_circuit_paths_are_deterministic() {
+     ]);
+     assert_eq!(all_false.evaluate(&context), Ok(false));
+ }
++
++#[test]
++fn primitive_rules_not_and_complexity_bound_cover_both_outcomes() {
++    let supervised = OccupancyContext::new(vec![
++        occupant(1, 40, false),
++        occupant(2, 8, true),
++    ])
++    .unwrap_or_else(|_| unreachable!());
++    let unsupervised = OccupancyContext::new(vec![occupant(3, 8, false)])
++        .unwrap_or_else(|_| unreachable!());
++
++    assert_eq!(Rule::Capacity { min: 2, max: 2 }.evaluate(&supervised), Ok(true));
++    assert_eq!(Rule::Capacity { min: 3, max: 4 }.evaluate(&supervised), Ok(false));
++    assert_eq!(
++        Rule::AgeRangeCount {
++            min_age: 0,
++            max_age: 17,
++            min_count: 1,
++            max_count: 1,
++        }
++        .evaluate(&supervised),
++        Ok(true)
++    );
++    assert_eq!(
++        Rule::AgeRangeCount {
++            min_age: 0,
++            max_age: 17,
++            min_count: 2,
++            max_count: 2,
++        }
++        .evaluate(&supervised),
++        Ok(false)
++    );
++    assert_eq!(
++        Rule::RequireGuardianForMinors {
++            minor_below_age: 18,
++        }
++        .evaluate(&supervised),
++        Ok(true)
++    );
++    assert_eq!(
++        Rule::RequireGuardianForMinors {
++            minor_below_age: 18,
++        }
++        .evaluate(&unsupervised),
++        Ok(false)
++    );
++    assert_eq!(
++        Rule::Not(Box::new(Rule::Capacity { min: 3, max: 3 })).evaluate(&supervised),
++        Ok(true)
++    );
++    assert_eq!(
++        Rule::Not(Box::new(Rule::Capacity { min: 2, max: 2 })).evaluate(&supervised),
++        Ok(false)
++    );
++
++    let mut too_deep = Rule::Capacity { min: 1, max: 1 };
++    for _ in 0..256 {
++        too_deep = Rule::Not(Box::new(too_deep));
++    }
++    assert_eq!(too_deep.validate(), Err(RuleError::RuleTooComplex));
++}
+diff --git a/crates/veyra-segment/src/lib.rs b/crates/veyra-segment/src/lib.rs
+index 3d90990..4e69e35 100644
+--- a/crates/veyra-segment/src/lib.rs
++++ b/crates/veyra-segment/src/lib.rs
+@@ -73,8 +73,7 @@ impl Segment {
+         if payload.len() > MAX_PAYLOAD_BYTES {
+             return Err(SegmentError::PayloadTooLarge(payload.len()));
+         }
+-        let payload_length =
+-            u64::try_from(payload.len()).map_err(|_| SegmentError::LengthOverflow)?;
++        let payload_length = payload.len() as u64;
+         let checksum = crc32c(&payload);
+         Ok(Self {
+             header: SegmentHeader {
+@@ -102,9 +101,7 @@ impl Segment {
+     }
+ 
+     pub fn encode(&self) -> Result<Vec<u8>, SegmentError> {
+-        let total = HEADER_LEN
+-            .checked_add(self.payload.len())
+-            .ok_or(SegmentError::LengthOverflow)?;
++        let total = HEADER_LEN + self.payload.len();
+         let mut out = Vec::with_capacity(total);
+         out.extend_from_slice(&MAGIC);
+         out.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
+@@ -115,15 +112,12 @@ impl Segment {
+         out.extend_from_slice(&self.header.start_lsn.get().to_le_bytes());
+         out.extend_from_slice(&self.header.end_lsn.get().to_le_bytes());
+         out.extend_from_slice(&self.header.record_count.to_le_bytes());
+-        let payload_offset = u64::try_from(HEADER_LEN).map_err(|_| SegmentError::LengthOverflow)?;
++        let payload_offset = HEADER_LEN as u64;
+         out.extend_from_slice(&payload_offset.to_le_bytes());
+         out.extend_from_slice(&self.header.payload_length.to_le_bytes());
+         out.extend_from_slice(&self.header.checksum.to_le_bytes());
+         out.extend_from_slice(&0_u32.to_le_bytes());
+         out.extend_from_slice(&0_u64.to_le_bytes());
+-        if out.len() != HEADER_LEN {
+-            return Err(SegmentError::InternalHeaderSize(out.len()));
+-        }
+         out.extend_from_slice(&self.payload);
+         Ok(out)
+     }
+@@ -135,35 +129,31 @@ impl Segment {
+         if bytes[0..4] != MAGIC {
+             return Err(SegmentError::InvalidMagic);
+         }
+-        let version = read_u16(&bytes[4..6])?;
++        let version = read_u16(&bytes[4..6]);
+         if version != FORMAT_VERSION {
+             return Err(SegmentError::UnsupportedVersion(version));
+         }
+-        let segment_type = SegmentType::try_from(read_u16(&bytes[6..8])?)?;
+-        let flags = read_u32(&bytes[8..12])?;
+-        let generation = GenerationId::new(read_u64(&bytes[16..24])?);
+-        let start_lsn = LogSequenceNumber::new(read_u64(&bytes[24..32])?);
+-        let end_lsn = LogSequenceNumber::new(read_u64(&bytes[32..40])?);
++        let segment_type = SegmentType::try_from(read_u16(&bytes[6..8]))?;
++        let flags = read_u32(&bytes[8..12]);
++        let generation = GenerationId::new(read_u64(&bytes[16..24]));
++        let start_lsn = LogSequenceNumber::new(read_u64(&bytes[24..32]));
++        let end_lsn = LogSequenceNumber::new(read_u64(&bytes[32..40]));
+         if end_lsn < start_lsn {
+             return Err(SegmentError::LsnRangeReversed);
+         }
+-        let record_count = read_u64(&bytes[40..48])?;
+-        let payload_offset = read_u64(&bytes[48..56])?;
+-        let payload_length = read_u64(&bytes[56..64])?;
+-        let checksum = read_u32(&bytes[64..68])?;
+-        let expected_offset =
+-            u64::try_from(HEADER_LEN).map_err(|_| SegmentError::LengthOverflow)?;
++        let record_count = read_u64(&bytes[40..48]);
