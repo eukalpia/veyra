@@ -86,8 +86,7 @@ fn document(destination_id: u32, restrictions: CompiledRestrictions) -> RoomDocu
         adult_age: 18,
         occupancy_rule: policy(),
         restrictions,
-        prices: PriceVector::try_new(10, vec![money(100); 8], 1)
-            .unwrap_or_else(|_| unreachable!()),
+        prices: PriceVector::try_new(10, vec![money(100); 8], 1).unwrap_or_else(|_| unreachable!()),
         occupancy_adjustment: OccupancyAdjustment {
             per_adult_per_night: money(0),
             per_child_per_night: money(0),
