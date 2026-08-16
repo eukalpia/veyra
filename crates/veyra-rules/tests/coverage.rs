@@ -52,8 +52,8 @@ fn context_upper_bound_and_every_validation_error_are_explicit() {
 
 #[test]
 fn boolean_short_circuit_paths_are_deterministic() {
-    let context = OccupancyContext::new(vec![occupant(1, 30, false)])
-        .unwrap_or_else(|_| unreachable!());
+    let context =
+        OccupancyContext::new(vec![occupant(1, 30, false)]).unwrap_or_else(|_| unreachable!());
     let false_first = Rule::And(vec![
         Rule::Capacity { min: 2, max: 2 },
         Rule::RequireAdult {
