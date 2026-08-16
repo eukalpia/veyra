@@ -9,7 +9,7 @@ use core::fmt;
 use std::collections::BTreeSet;
 use veyra_party::{BookingParty, CivilDate, ConstraintStrength, RoomingRelation, TravelerId};
 use veyra_rule_compiler::{CompileError, CompiledRule};
-use veyra_rules::{Occupant, OccupancyContext, RuleError};
+use veyra_rules::{OccupancyContext, Occupant, RuleError};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OccupancyReport {
@@ -51,18 +51,14 @@ pub fn validate_room(
             .age_at(check_in)
             .map_err(|_| OccupancyError::InvalidAge(*id))?;
         if age >= adult_age {
-            adults = adults
-                .checked_add(1)
-                .ok_or(OccupancyError::CountOverflow)?;
+            adults = adults.checked_add(1).ok_or(OccupancyError::CountOverflow)?;
         } else {
             children = children
                 .checked_add(1)
                 .ok_or(OccupancyError::CountOverflow)?;
         }
         let authorized_guardian_present = party.guardians().iter().any(|edge| {
-            edge.dependent == *id
-                && edge.valid_for_rooming
-                && occupant_set.contains(&edge.guardian)
+            edge.dependent == *id && edge.valid_for_rooming && occupant_set.contains(&edge.guardian)
         });
         occupants.push(Occupant {
             traveler_id: *id,
@@ -144,7 +140,7 @@ impl std::error::Error for OccupancyError {}
 mod tests {
     use super::*;
     use veyra_party::{AgeEvidence, GuardianRelationship, RoomingIntent, Traveler};
-    use veyra_rule_compiler::{compile, RULE_SCHEMA_V1};
+    use veyra_rule_compiler::{RULE_SCHEMA_V1, compile};
     use veyra_rules::Rule;
 
     fn date(y: i32, m: u8, d: u8) -> CivilDate {

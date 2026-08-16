@@ -221,13 +221,16 @@ mod tests {
             PriceVector::try_new(0, vec![money(1)], 0),
             Err(PricingError::UnknownModelVersion)
         );
-        let vector = PriceVector::try_new(10, vec![money(1); 2], 1)
-            .unwrap_or_else(|_| unreachable!());
+        let vector =
+            PriceVector::try_new(10, vec![money(1); 2], 1).unwrap_or_else(|_| unreachable!());
         let zero = OccupancyAdjustment {
             per_adult_per_night: money(0),
             per_child_per_night: money(0),
         };
-        assert_eq!(vector.quote(10, 10, 1, 0, zero), Err(PricingError::InvalidStay));
+        assert_eq!(
+            vector.quote(10, 10, 1, 0, zero),
+            Err(PricingError::InvalidStay)
+        );
         assert_eq!(
             vector.quote(9, 10, 1, 0, zero),
             Err(PricingError::OutsidePriceHorizon)
@@ -248,8 +251,7 @@ mod tests {
             MoneyMicros::signed(i64::MAX).checked_mul(2),
             Err(PricingError::Overflow)
         );
-        let vector = PriceVector::try_new(0, vec![money(1)], 1)
-            .unwrap_or_else(|_| unreachable!());
+        let vector = PriceVector::try_new(0, vec![money(1)], 1).unwrap_or_else(|_| unreachable!());
         let negative = OccupancyAdjustment {
             per_adult_per_night: MoneyMicros::signed(-2),
             per_child_per_night: money(0),

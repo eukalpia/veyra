@@ -15,15 +15,23 @@ pub const MAX_OPS: usize = 256;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Op {
-    Capacity { min: u16, max: u16 },
+    Capacity {
+        min: u16,
+        max: u16,
+    },
     AgeRangeCount {
         min_age: u16,
         max_age: u16,
         min_count: u16,
         max_count: u16,
     },
-    RequireAdult { adult_age: u16, min_adults: u16 },
-    RequireGuardianForMinors { minor_below_age: u16 },
+    RequireAdult {
+        adult_age: u16,
+        min_adults: u16,
+    },
+    RequireGuardianForMinors {
+        minor_below_age: u16,
+    },
     And(u16),
     Or(u16),
     Not,
@@ -264,7 +272,7 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
     use veyra_party::TravelerId;
-    use veyra_rules::{Occupant, OccupancyContext};
+    use veyra_rules::{OccupancyContext, Occupant};
 
     fn occupant(id: u32, age: u16, guardian: bool) -> Occupant {
         Occupant {
@@ -298,11 +306,8 @@ mod tests {
 
     #[test]
     fn compiler_matches_reference_interpreter() {
-        let context = OccupancyContext::new(vec![
-            occupant(1, 40, false),
-            occupant(2, 10, true),
-        ])
-        .unwrap_or_else(|_| unreachable!());
+        let context = OccupancyContext::new(vec![occupant(1, 40, false), occupant(2, 10, true)])
+            .unwrap_or_else(|_| unreachable!());
         let rule = composite_rule();
         let compiled = compile(RULE_SCHEMA_V1, &rule).unwrap_or_else(|_| unreachable!());
         assert_eq!(compiled.schema_version(), RULE_SCHEMA_V1);
@@ -326,8 +331,8 @@ mod tests {
 
     #[test]
     fn boolean_bytecode_matches_reference() {
-        let context = OccupancyContext::new(vec![occupant(1, 30, false)])
-            .unwrap_or_else(|_| unreachable!());
+        let context =
+            OccupancyContext::new(vec![occupant(1, 30, false)]).unwrap_or_else(|_| unreachable!());
         for rule in [
             Rule::And(vec![
                 Rule::Capacity { min: 1, max: 1 },

@@ -1101,10 +1101,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "veyra-occupancy"
+version = "0.1.0"
+dependencies = [
+ "veyra-party",
+ "veyra-rule-compiler",
+ "veyra-rules",
+]
+
+[[package]]
 name = "veyra-party"
 version = "0.1.0"
 dependencies = [
  "proptest",
+]
+
+[[package]]
+name = "veyra-pricing"
+version = "0.1.0"
+
+[[package]]
+name = "veyra-restrictions"
+version = "0.1.0"
+
+[[package]]
+name = "veyra-rule-compiler"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "veyra-party",
+ "veyra-rules",
 ]
 
 [[package]]
@@ -1144,6 +1170,17 @@ dependencies = [
  "tracing-subscriber",
  "veyra-runtime",
  "veyra-types",
+]
+
+[[package]]
+name = "veyra-solver"
+version = "0.1.0"
+dependencies = [
+ "veyra-occupancy",
+ "veyra-party",
+ "veyra-pricing",
+ "veyra-rule-compiler",
+ "veyra-rules",
 ]
 
 [[package]]

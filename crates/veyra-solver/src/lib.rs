@@ -9,9 +9,7 @@
 use core::fmt;
 use std::collections::BTreeSet;
 use veyra_occupancy::validate_room;
-use veyra_party::{
-    BookingParty, CivilDate, ConstraintStrength, RoomingRelation, TravelerId,
-};
+use veyra_party::{BookingParty, CivilDate, ConstraintStrength, RoomingRelation, TravelerId};
 use veyra_pricing::{MoneyMicros, PricingError};
 use veyra_rule_compiler::CompiledRule;
 
@@ -359,18 +357,13 @@ fn layout_soft_penalty(context: &SearchContext<'_>) -> Result<u32, SolverError> 
             ConstraintStrength::Must => false,
         };
         if violated {
-            penalty = penalty
-                .checked_add(1)
-                .ok_or(SolverError::PenaltyOverflow)?;
+            penalty = penalty.checked_add(1).ok_or(SolverError::PenaltyOverflow)?;
         }
     }
     Ok(penalty)
 }
 
-fn assignment_of(
-    context: &SearchContext<'_>,
-    traveler: TravelerId,
-) -> Result<usize, SolverError> {
+fn assignment_of(context: &SearchContext<'_>, traveler: TravelerId) -> Result<usize, SolverError> {
     let position = context
         .travelers
         .iter()
@@ -425,7 +418,7 @@ mod tests {
     use super::*;
     use veyra_party::{AgeEvidence, GuardianRelationship, RoomingIntent, Traveler};
     use veyra_pricing::MoneyMicros;
-    use veyra_rule_compiler::{compile, RULE_SCHEMA_V1};
+    use veyra_rule_compiler::{RULE_SCHEMA_V1, compile};
     use veyra_rules::Rule;
 
     fn date(y: i32, m: u8, d: u8) -> CivilDate {
@@ -484,8 +477,7 @@ mod tests {
     fn room(id: u32, price: i64, floor: u16) -> RoomOffer {
         RoomOffer {
             room_id: id,
-            projected_price: MoneyMicros::try_nonnegative(price)
-                .unwrap_or_else(|_| unreachable!()),
+            projected_price: MoneyMicros::try_nonnegative(price).unwrap_or_else(|_| unreachable!()),
             floor,
             building: 1,
             adult_age: 18,
@@ -608,12 +600,7 @@ mod tests {
         let empty = BookingParty::builder().build();
         assert!(empty.is_err());
         assert_eq!(
-            solve(
-                &party(),
-                date(2026, 1, 1),
-                &[],
-                SolverConfig::default(),
-            ),
+            solve(&party(), date(2026, 1, 1), &[], SolverConfig::default(),),
             Err(SolverError::InvalidRoomCount(0))
         );
         assert_eq!(

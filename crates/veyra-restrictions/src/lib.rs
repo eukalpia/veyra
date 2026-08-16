@@ -215,10 +215,7 @@ mod tests {
 
     #[test]
     fn unknown_incomplete_duplicate_and_invalid_policy_is_rejected() {
-        assert_eq!(
-            compile(9, &[]),
-            Err(RestrictionError::UnsupportedSchema(9))
-        );
+        assert_eq!(compile(9, &[]), Err(RestrictionError::UnsupportedSchema(9)));
         assert_eq!(
             compile(RESTRICTION_SCHEMA_V1, &[]),
             Err(RestrictionError::MissingRule("MIN_STAY"))
