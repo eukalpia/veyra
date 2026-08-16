@@ -33,13 +33,26 @@ fn generation(id: u64, end: u64) -> Arc<Generation> {
 
 #[test]
 fn store_debug_and_atomic_replacement_are_observable() {
-    let store = GenerationStore::new(generation(1, 10));
+    let initial = generation(1, 10);
+    assert_eq!(initial.id(), GenerationId::new(1));
+    assert_eq!(initial.start_lsn(), LogSequenceNumber::new(1));
+    assert_eq!(initial.end_lsn(), LogSequenceNumber::new(10));
+    assert_eq!(initial.segment_count(), 1);
+    assert!(initial.segment(SegmentType::Availability).is_some());
+    assert!(initial.segment(SegmentType::Pricing).is_none());
+
+    let store = GenerationStore::new(Arc::clone(&initial));
     assert!(format!("{store:?}").contains("GenerationStore"));
+    assert_eq!(store.load().id(), GenerationId::new(1));
+
     let old = store
         .publish(generation(2, 20))
         .unwrap_or_else(|_| unreachable!());
     assert_eq!(old.id(), GenerationId::new(1));
-    assert_eq!(store.load().id(), GenerationId::new(2));
+    let current = store.load();
+    assert_eq!(current.id(), GenerationId::new(2));
+    assert_eq!(current.start_lsn(), LogSequenceNumber::new(1));
+    assert_eq!(current.end_lsn(), LogSequenceNumber::new(20));
 }
 
 #[test]
