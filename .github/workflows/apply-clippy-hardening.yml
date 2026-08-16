@@ -49,6 +49,20 @@ jobs:
                       "                let count = u16::try_from(\n                    context.count_age_range(*min_age, *max_age),\n                )\n                .map_err(|_| RuleError::CountOverflow)?;\n",
                   ),
               ],
+              Path("crates/veyra-pricing/src/lib.rs"): [
+                  (
+                      "        let nights = nights_i64 as usize;\n",
+                      "        let nights =\n            usize::try_from(nights_i64).map_err(|_| PricingError::InvalidStay)?;\n",
+                  ),
+                  (
+                      "        let start = start_i64 as usize;\n        let end = start + nights;\n",
+                      "        let start = usize::try_from(start_i64)\n            .map_err(|_| PricingError::OutsidePriceHorizon)?;\n        let end = start.checked_add(nights).ok_or(PricingError::Overflow)?;\n",
+                  ),
+                  (
+                      "        let night_count = nights as u32;\n",
+                      "        let night_count = u32::try_from(nights).map_err(|_| PricingError::Overflow)?;\n",
+                  ),
+              ],
           }
 
           for path, items in replacements.items():
