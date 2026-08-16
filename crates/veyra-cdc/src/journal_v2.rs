@@ -28,7 +28,9 @@ pub struct ReplayGuard {
 
 impl ReplayGuard {
     #[must_use]
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     pub fn observe(&mut self, batch: &TransactionBatch) -> Result<ReplayDecision, JournalError> {
         let lsn = batch.commit_lsn();
@@ -45,7 +47,9 @@ impl ReplayGuard {
 
     #[must_use]
     pub fn highest_commit_lsn(&self) -> LogSequenceNumber {
-        self.fingerprints.last_key_value().map_or(LogSequenceNumber::ZERO, |(lsn, _)| *lsn)
+        self.fingerprints
+            .last_key_value()
+            .map_or(LogSequenceNumber::ZERO, |(lsn, _)| *lsn)
     }
 }
 
@@ -69,8 +73,16 @@ impl fmt::Debug for Journal {
 impl Journal {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, JournalError> {
         let path = path.as_ref().to_path_buf();
-        let file = OpenOptions::new().create(true).read(true).append(true).open(&path)?;
-        let mut journal = Self { path, file, guard: ReplayGuard::new() };
+        let file = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .append(true)
+            .open(&path)?;
+        let mut journal = Self {
+            path,
+            file,
+            guard: ReplayGuard::new(),
+        };
         journal.recover()?;
         Ok(journal)
     }
@@ -78,9 +90,13 @@ impl Journal {
     /// Appends a complete transaction and calls `sync_data` before reporting success.
     pub fn append(&mut self, batch: &TransactionBatch) -> Result<ReplayDecision, JournalError> {
         let decision = self.guard.observe(batch)?;
-        if decision == ReplayDecision::Duplicate { return Ok(decision); }
+        if decision == ReplayDecision::Duplicate {
+            return Ok(decision);
+        }
         let payload = encode_batch(batch)?;
-        if payload.len() > MAX_RECORD_BYTES { return Err(JournalError::RecordTooLarge(payload.len())); }
+        if payload.len() > MAX_RECORD_BYTES {
+            return Err(JournalError::RecordTooLarge(payload.len()));
+        }
         let payload_len = u64::try_from(payload.len()).map_err(|_| JournalError::LengthOverflow)?;
         let mut header = [0_u8; HEADER_LEN];
         header[0..4].copy_from_slice(&MAGIC);
@@ -96,7 +112,9 @@ impl Journal {
     }
 
     #[must_use]
-    pub fn highest_commit_lsn(&self) -> LogSequenceNumber { self.guard.highest_commit_lsn() }
+    pub fn highest_commit_lsn(&self) -> LogSequenceNumber {
+        self.guard.highest_commit_lsn()
+    }
 
     pub fn replay(&mut self) -> Result<Vec<TransactionBatch>, JournalError> {
         self.file.flush()?;
@@ -124,53 +142,90 @@ impl Journal {
     }
 }
 
-fn scan(file: &mut File, allow_incomplete_tail: bool) -> Result<(Vec<TransactionBatch>, Option<u64>), JournalError> {
+fn scan(
+    file: &mut File,
+    allow_incomplete_tail: bool,
+) -> Result<(Vec<TransactionBatch>, Option<u64>), JournalError> {
     file.seek(SeekFrom::Start(0))?;
     let file_len = file.metadata()?.len();
     let header_len = u64::try_from(HEADER_LEN).map_err(|_| JournalError::LengthOverflow)?;
     let mut records = Vec::new();
     let mut offset = 0_u64;
     loop {
-        if offset == file_len { return Ok((records, None)); }
-        let remaining = file_len.checked_sub(offset).ok_or(JournalError::LengthOverflow)?;
-        if remaining < header_len { return tail(records, offset, allow_incomplete_tail); }
+        if offset == file_len {
+            return Ok((records, None));
+        }
+        let remaining = file_len
+            .checked_sub(offset)
+            .ok_or(JournalError::LengthOverflow)?;
+        if remaining < header_len {
+            return tail(records, offset, allow_incomplete_tail);
+        }
         let mut header = [0_u8; HEADER_LEN];
         file.read_exact(&mut header)?;
-        if header[0..4] != MAGIC { return Err(JournalError::InvalidMagic(offset)); }
+        if header[0..4] != MAGIC {
+            return Err(JournalError::InvalidMagic(offset));
+        }
         let version = u16::from_le_bytes([header[4], header[5]]);
-        if version != VERSION { return Err(JournalError::UnsupportedVersion(version)); }
+        if version != VERSION {
+            return Err(JournalError::UnsupportedVersion(version));
+        }
         let payload_len = header_u64(&header[8..16])?;
         let commit_lsn = header_u64(&header[16..24])?;
         let fingerprint = header_u64(&header[24..32])?;
-        let payload_len_usize = usize::try_from(payload_len).map_err(|_| JournalError::LengthOverflow)?;
-        if payload_len_usize > MAX_RECORD_BYTES { return Err(JournalError::RecordTooLarge(payload_len_usize)); }
-        let total = header_len.checked_add(payload_len).and_then(|v| v.checked_add(CRC_LEN)).ok_or(JournalError::LengthOverflow)?;
-        if remaining < total { return tail(records, offset, allow_incomplete_tail); }
+        let payload_len_usize =
+            usize::try_from(payload_len).map_err(|_| JournalError::LengthOverflow)?;
+        if payload_len_usize > MAX_RECORD_BYTES {
+            return Err(JournalError::RecordTooLarge(payload_len_usize));
+        }
+        let total = header_len
+            .checked_add(payload_len)
+            .and_then(|v| v.checked_add(CRC_LEN))
+            .ok_or(JournalError::LengthOverflow)?;
+        if remaining < total {
+            return tail(records, offset, allow_incomplete_tail);
+        }
         let mut payload = vec![0_u8; payload_len_usize];
         file.read_exact(&mut payload)?;
         let mut crc = [0_u8; 4];
         file.read_exact(&mut crc)?;
-        if crc32c(&payload) != u32::from_le_bytes(crc) { return Err(JournalError::ChecksumMismatch(offset)); }
+        if crc32c(&payload) != u32::from_le_bytes(crc) {
+            return Err(JournalError::ChecksumMismatch(offset));
+        }
         let batch = decode_batch(&payload)?;
         if batch.commit_lsn().get() != commit_lsn || batch.fingerprint() != fingerprint {
             return Err(JournalError::HeaderPayloadMismatch(offset));
         }
         records.push(batch);
-        offset = offset.checked_add(total).ok_or(JournalError::LengthOverflow)?;
+        offset = offset
+            .checked_add(total)
+            .ok_or(JournalError::LengthOverflow)?;
     }
 }
 
-fn tail(records: Vec<TransactionBatch>, offset: u64, allow: bool) -> Result<(Vec<TransactionBatch>, Option<u64>), JournalError> {
-    if allow { Ok((records, Some(offset))) } else { Err(JournalError::IncompleteTail(offset)) }
+fn tail(
+    records: Vec<TransactionBatch>,
+    offset: u64,
+    allow: bool,
+) -> Result<(Vec<TransactionBatch>, Option<u64>), JournalError> {
+    if allow {
+        Ok((records, Some(offset)))
+    } else {
+        Err(JournalError::IncompleteTail(offset))
+    }
 }
 
 fn header_u64(bytes: &[u8]) -> Result<u64, JournalError> {
-    Ok(u64::from_le_bytes(bytes.try_into().map_err(|_| JournalError::CorruptHeader)?))
+    Ok(u64::from_le_bytes(
+        bytes.try_into().map_err(|_| JournalError::CorruptHeader)?,
+    ))
 }
 
 fn encode_batch(batch: &TransactionBatch) -> Result<Vec<u8>, JournalError> {
     let count = batch.changes().len();
-    if count > MAX_CHANGES { return Err(JournalError::TooManyChanges(count)); }
+    if count > MAX_CHANGES {
+        return Err(JournalError::TooManyChanges(count));
+    }
     let count = u32::try_from(count).map_err(|_| JournalError::TooManyChanges(count))?;
     let mut out = Vec::new();
     out.extend_from_slice(&batch.xid().to_le_bytes());
@@ -190,8 +245,11 @@ fn encode_batch(batch: &TransactionBatch) -> Result<Vec<u8>, JournalError> {
 fn encode_optional(out: &mut Vec<u8>, tuple: Option<&[u8]>) -> Result<(), JournalError> {
     match tuple {
         Some(bytes) => {
-            if bytes.len() > MAX_RECORD_BYTES { return Err(JournalError::TupleTooLarge(bytes.len())); }
-            let len = u32::try_from(bytes.len()).map_err(|_| JournalError::TupleTooLarge(bytes.len()))?;
+            if bytes.len() > MAX_RECORD_BYTES {
+                return Err(JournalError::TupleTooLarge(bytes.len()));
+            }
+            let len =
+                u32::try_from(bytes.len()).map_err(|_| JournalError::TupleTooLarge(bytes.len()))?;
             out.push(1);
             out.extend_from_slice(&len.to_le_bytes());
             out.extend_from_slice(bytes);
@@ -208,7 +266,9 @@ fn decode_batch(bytes: &[u8]) -> Result<TransactionBatch, JournalError> {
     let commit_lsn = LogSequenceNumber::new(cursor.u64()?);
     let end_lsn = LogSequenceNumber::new(cursor.u64()?);
     let count = usize::try_from(cursor.u32()?).map_err(|_| JournalError::LengthOverflow)?;
-    if count > MAX_CHANGES { return Err(JournalError::TooManyChanges(count)); }
+    if count > MAX_CHANGES {
+        return Err(JournalError::TooManyChanges(count));
+    }
     let mut changes = Vec::with_capacity(count);
     for _ in 0..count {
         let relation_id = cursor.u32()?;
@@ -219,37 +279,74 @@ fn decode_batch(bytes: &[u8]) -> Result<TransactionBatch, JournalError> {
             3 => ChangeKind::Truncate,
             value => return Err(JournalError::InvalidChangeKind(value)),
         };
-        changes.push(RowChange::new(relation_id, kind, cursor.optional_bytes()?, cursor.optional_bytes()?));
+        changes.push(RowChange::new(
+            relation_id,
+            kind,
+            cursor.optional_bytes()?,
+            cursor.optional_bytes()?,
+        ));
     }
     cursor.finish()?;
-    TransactionBatch::try_new(xid, final_lsn, commit_lsn, end_lsn, changes).map_err(JournalError::InvalidTransaction)
+    TransactionBatch::try_new(xid, final_lsn, commit_lsn, end_lsn, changes)
+        .map_err(JournalError::InvalidTransaction)
 }
 
-struct Cursor<'a> { bytes: &'a [u8], offset: usize }
+struct Cursor<'a> {
+    bytes: &'a [u8],
+    offset: usize,
+}
 impl<'a> Cursor<'a> {
-    const fn new(bytes: &'a [u8]) -> Self { Self { bytes, offset: 0 } }
+    const fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes, offset: 0 }
+    }
     fn take(&mut self, len: usize) -> Result<&'a [u8], JournalError> {
-        let end = self.offset.checked_add(len).ok_or(JournalError::LengthOverflow)?;
-        let slice = self.bytes.get(self.offset..end).ok_or(JournalError::UnexpectedEof)?;
+        let end = self
+            .offset
+            .checked_add(len)
+            .ok_or(JournalError::LengthOverflow)?;
+        let slice = self
+            .bytes
+            .get(self.offset..end)
+            .ok_or(JournalError::UnexpectedEof)?;
         self.offset = end;
         Ok(slice)
     }
-    fn u8(&mut self) -> Result<u8, JournalError> { Ok(self.take(1)?[0]) }
-    fn u32(&mut self) -> Result<u32, JournalError> { Ok(u32::from_le_bytes(self.take(4)?.try_into().map_err(|_| JournalError::UnexpectedEof)?)) }
-    fn u64(&mut self) -> Result<u64, JournalError> { Ok(u64::from_le_bytes(self.take(8)?.try_into().map_err(|_| JournalError::UnexpectedEof)?)) }
+    fn u8(&mut self) -> Result<u8, JournalError> {
+        Ok(self.take(1)?[0])
+    }
+    fn u32(&mut self) -> Result<u32, JournalError> {
+        Ok(u32::from_le_bytes(
+            self.take(4)?
+                .try_into()
+                .map_err(|_| JournalError::UnexpectedEof)?,
+        ))
+    }
+    fn u64(&mut self) -> Result<u64, JournalError> {
+        Ok(u64::from_le_bytes(
+            self.take(8)?
+                .try_into()
+                .map_err(|_| JournalError::UnexpectedEof)?,
+        ))
+    }
     fn optional_bytes(&mut self) -> Result<Option<Vec<u8>>, JournalError> {
         match self.u8()? {
             0 => Ok(None),
             1 => {
                 let len = usize::try_from(self.u32()?).map_err(|_| JournalError::LengthOverflow)?;
-                if len > MAX_RECORD_BYTES { return Err(JournalError::TupleTooLarge(len)); }
+                if len > MAX_RECORD_BYTES {
+                    return Err(JournalError::TupleTooLarge(len));
+                }
                 Ok(Some(self.take(len)?.to_vec()))
             }
             tag => Err(JournalError::InvalidOptionTag(tag)),
         }
     }
     fn finish(&self) -> Result<(), JournalError> {
-        if self.offset == self.bytes.len() { Ok(()) } else { Err(JournalError::TrailingBytes(self.bytes.len() - self.offset)) }
+        if self.offset == self.bytes.len() {
+            Ok(())
+        } else {
+            Err(JournalError::TrailingBytes(self.bytes.len() - self.offset))
+        }
     }
 }
 
@@ -289,15 +386,26 @@ pub enum JournalError {
 
 impl fmt::Display for JournalError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self { Self::Io(error) => write!(formatter, "journal I/O error: {error}"), other => write!(formatter, "{other:?}") }
+        match self {
+            Self::Io(error) => write!(formatter, "journal I/O error: {error}"),
+            other => write!(formatter, "{other:?}"),
+        }
     }
 }
 impl std::error::Error for JournalError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self { Self::Io(error) => Some(error), Self::InvalidTransaction(error) => Some(error), _ => None }
+        match self {
+            Self::Io(error) => Some(error),
+            Self::InvalidTransaction(error) => Some(error),
+            _ => None,
+        }
     }
 }
-impl From<io::Error> for JournalError { fn from(value: io::Error) -> Self { Self::Io(value) } }
+impl From<io::Error> for JournalError {
+    fn from(value: io::Error) -> Self {
+        Self::Io(value)
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -305,8 +413,14 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_path(label: &str) -> PathBuf {
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
-        std::env::temp_dir().join(format!("veyra-{label}-{}-{nanos}.journal", std::process::id()))
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "veyra-{label}-{}-{nanos}.journal",
+            std::process::id()
+        ))
     }
     fn batch(commit: u64, value: u8) -> TransactionBatch {
         TransactionBatch::try_new(
@@ -314,12 +428,20 @@ mod tests {
             LogSequenceNumber::new(commit),
             LogSequenceNumber::new(commit),
             LogSequenceNumber::new(commit),
-            vec![RowChange::new(5, ChangeKind::Insert, None, Some(vec![value]))],
-        ).unwrap_or_else(|_| unreachable!())
+            vec![RowChange::new(
+                5,
+                ChangeKind::Insert,
+                None,
+                Some(vec![value]),
+            )],
+        )
+        .unwrap_or_else(|_| unreachable!())
     }
 
     #[test]
-    fn crc_matches_standard_vector() { assert_eq!(crc32c(b"123456789"), 0xe306_9283); }
+    fn crc_matches_standard_vector() {
+        assert_eq!(crc32c(b"123456789"), 0xe306_9283);
+    }
 
     #[test]
     fn replay_guard_handles_duplicate_and_conflict() {
@@ -328,7 +450,10 @@ mod tests {
         assert_eq!(guard.observe(&one), Ok(ReplayDecision::Apply));
         assert_eq!(guard.observe(&one), Ok(ReplayDecision::Duplicate));
         assert_eq!(guard.highest_commit_lsn().get(), 10);
-        assert!(matches!(guard.observe(&batch(10, 2)), Err(JournalError::ConflictingReplay(_))));
+        assert!(matches!(
+            guard.observe(&batch(10, 2)),
+            Err(JournalError::ConflictingReplay(_))
+        ));
     }
 
     #[test]
@@ -348,9 +473,16 @@ mod tests {
     #[test]
     fn recovery_truncates_incomplete_tail() -> Result<(), JournalError> {
         let path = temp_path("tail");
-        { let mut journal = Journal::open(&path)?; let _ = journal.append(&batch(10, 1))?; }
+        {
+            let mut journal = Journal::open(&path)?;
+            let _ = journal.append(&batch(10, 1))?;
+        }
         let good_len = std::fs::metadata(&path)?.len();
-        { let mut file = OpenOptions::new().append(true).open(&path)?; file.write_all(b"VY")?; file.sync_data()?; }
+        {
+            let mut file = OpenOptions::new().append(true).open(&path)?;
+            file.write_all(b"VY")?;
+            file.sync_data()?;
+        }
         assert_eq!(Journal::open(&path)?.highest_commit_lsn().get(), 10);
         assert_eq!(std::fs::metadata(&path)?.len(), good_len);
         let _ = std::fs::remove_file(path);
@@ -360,10 +492,24 @@ mod tests {
     #[test]
     fn checksum_corruption_is_rejected() -> Result<(), Box<dyn std::error::Error>> {
         let path = temp_path("crc");
-        { let mut journal = Journal::open(&path)?; let _ = journal.append(&batch(10, 1))?; }
+        {
+            let mut journal = Journal::open(&path)?;
+            let _ = journal.append(&batch(10, 1))?;
+        }
         let pos = std::fs::metadata(&path)?.len() - 1;
-        { let mut file = OpenOptions::new().read(true).write(true).open(&path)?; file.seek(SeekFrom::Start(pos))?; let mut byte = [0_u8; 1]; file.read_exact(&mut byte)?; file.seek(SeekFrom::Start(pos))?; file.write_all(&[byte[0] ^ 0xff])?; file.sync_data()?; }
-        assert!(matches!(Journal::open(&path), Err(JournalError::ChecksumMismatch(_))));
+        {
+            let mut file = OpenOptions::new().read(true).write(true).open(&path)?;
+            file.seek(SeekFrom::Start(pos))?;
+            let mut byte = [0_u8; 1];
+            file.read_exact(&mut byte)?;
+            file.seek(SeekFrom::Start(pos))?;
+            file.write_all(&[byte[0] ^ 0xff])?;
+            file.sync_data()?;
+        }
+        assert!(matches!(
+            Journal::open(&path),
+            Err(JournalError::ChecksumMismatch(_))
+        ));
         let _ = std::fs::remove_file(path);
         Ok(())
     }
@@ -374,9 +520,15 @@ mod tests {
         let mut bytes = encode_batch(&valid).unwrap_or_else(|_| unreachable!());
         let kind_offset = 4 + 8 + 8 + 8 + 4 + 4;
         bytes[kind_offset] = 99;
-        assert!(matches!(decode_batch(&bytes), Err(JournalError::InvalidChangeKind(99))));
+        assert!(matches!(
+            decode_batch(&bytes),
+            Err(JournalError::InvalidChangeKind(99))
+        ));
         let mut bytes = encode_batch(&valid).unwrap_or_else(|_| unreachable!());
         bytes.push(0);
-        assert!(matches!(decode_batch(&bytes), Err(JournalError::TrailingBytes(1))));
+        assert!(matches!(
+            decode_batch(&bytes),
+            Err(JournalError::TrailingBytes(1))
+        ));
     }
 }

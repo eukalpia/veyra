@@ -30,7 +30,12 @@ impl RowChange {
         old_tuple: Option<Vec<u8>>,
         new_tuple: Option<Vec<u8>>,
     ) -> Self {
-        Self { relation_id, kind, old_tuple, new_tuple }
+        Self {
+            relation_id,
+            kind,
+            old_tuple,
+            new_tuple,
+        }
     }
 }
 
@@ -55,19 +60,35 @@ impl TransactionBatch {
         if end_lsn < commit_lsn {
             return Err(TransactionValidationError::EndBeforeCommit);
         }
-        Ok(Self { xid, final_lsn, commit_lsn, end_lsn, changes })
+        Ok(Self {
+            xid,
+            final_lsn,
+            commit_lsn,
+            end_lsn,
+            changes,
+        })
     }
 
     #[must_use]
-    pub const fn xid(&self) -> u32 { self.xid }
+    pub const fn xid(&self) -> u32 {
+        self.xid
+    }
     #[must_use]
-    pub const fn final_lsn(&self) -> LogSequenceNumber { self.final_lsn }
+    pub const fn final_lsn(&self) -> LogSequenceNumber {
+        self.final_lsn
+    }
     #[must_use]
-    pub const fn commit_lsn(&self) -> LogSequenceNumber { self.commit_lsn }
+    pub const fn commit_lsn(&self) -> LogSequenceNumber {
+        self.commit_lsn
+    }
     #[must_use]
-    pub const fn end_lsn(&self) -> LogSequenceNumber { self.end_lsn }
+    pub const fn end_lsn(&self) -> LogSequenceNumber {
+        self.end_lsn
+    }
     #[must_use]
-    pub fn changes(&self) -> &[RowChange] { &self.changes }
+    pub fn changes(&self) -> &[RowChange] {
+        &self.changes
+    }
 
     /// Stable non-cryptographic fingerprint used only for duplicate-WAL conflict detection.
     #[must_use]
@@ -102,7 +123,9 @@ fn feed_fingerprint(hash: &mut u64, bytes: &[u8]) {
     }
 }
 
-fn usize_to_u64(value: usize) -> u64 { u64::try_from(value).unwrap_or(u64::MAX) }
+fn usize_to_u64(value: usize) -> u64 {
+    u64::try_from(value).unwrap_or(u64::MAX)
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TransactionValidationError {
@@ -133,14 +156,25 @@ pub struct TransactionBuilder {
 impl TransactionBuilder {
     #[must_use]
     pub const fn new() -> Self {
-        Self { open: None, last_commit_lsn: LogSequenceNumber::ZERO }
+        Self {
+            open: None,
+            last_commit_lsn: LogSequenceNumber::ZERO,
+        }
     }
 
-    pub fn begin(&mut self, xid: u32, final_lsn: LogSequenceNumber) -> Result<(), TransactionBuildError> {
+    pub fn begin(
+        &mut self,
+        xid: u32,
+        final_lsn: LogSequenceNumber,
+    ) -> Result<(), TransactionBuildError> {
         if self.open.is_some() {
             return Err(TransactionBuildError::NestedTransaction);
         }
-        self.open = Some(OpenTransaction { xid, final_lsn, changes: Vec::new() });
+        self.open = Some(OpenTransaction {
+            xid,
+            final_lsn,
+            changes: Vec::new(),
+        });
         Ok(())
     }
 
@@ -158,21 +192,29 @@ impl TransactionBuilder {
         commit_lsn: LogSequenceNumber,
         end_lsn: LogSequenceNumber,
     ) -> Result<TransactionBatch, TransactionBuildError> {
-        let open = self.open.take().ok_or(TransactionBuildError::CommitWithoutBegin)?;
+        let open = self
+            .open
+            .take()
+            .ok_or(TransactionBuildError::CommitWithoutBegin)?;
         if commit_lsn < self.last_commit_lsn {
             self.open = Some(open);
             return Err(TransactionBuildError::CommitLsnRegressed);
         }
-        let batch = TransactionBatch::try_new(open.xid, open.final_lsn, commit_lsn, end_lsn, open.changes)
-            .map_err(TransactionBuildError::InvalidTransaction)?;
+        let batch =
+            TransactionBatch::try_new(open.xid, open.final_lsn, commit_lsn, end_lsn, open.changes)
+                .map_err(TransactionBuildError::InvalidTransaction)?;
         self.last_commit_lsn = commit_lsn;
         Ok(batch)
     }
 
     #[must_use]
-    pub const fn is_open(&self) -> bool { self.open.is_some() }
+    pub const fn is_open(&self) -> bool {
+        self.open.is_some()
+    }
     #[must_use]
-    pub const fn last_commit_lsn(&self) -> LogSequenceNumber { self.last_commit_lsn }
+    pub const fn last_commit_lsn(&self) -> LogSequenceNumber {
+        self.last_commit_lsn
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -201,14 +243,26 @@ impl std::error::Error for TransactionBuildError {}
 mod tests {
     use super::*;
 
-    fn lsn(value: u64) -> LogSequenceNumber { LogSequenceNumber::new(value) }
-    fn change(value: u8) -> RowChange { RowChange::new(7, ChangeKind::Insert, None, Some(vec![value])) }
+    fn lsn(value: u64) -> LogSequenceNumber {
+        LogSequenceNumber::new(value)
+    }
+    fn change(value: u8) -> RowChange {
+        RowChange::new(7, ChangeKind::Insert, None, Some(vec![value]))
+    }
 
     #[test]
     fn batch_contract_and_fingerprint_are_deterministic() {
         let batch = TransactionBatch::try_new(9, lsn(20), lsn(20), lsn(21), vec![change(1)])
             .unwrap_or_else(|_| unreachable!());
-        assert_eq!((batch.xid(), batch.final_lsn().get(), batch.commit_lsn().get(), batch.end_lsn().get()), (9, 20, 20, 21));
+        assert_eq!(
+            (
+                batch.xid(),
+                batch.final_lsn().get(),
+                batch.commit_lsn().get(),
+                batch.end_lsn().get()
+            ),
+            (9, 20, 20, 21)
+        );
         assert_eq!(batch.changes().len(), 1);
         assert_eq!(batch.fingerprint(), batch.clone().fingerprint());
         let different = TransactionBatch::try_new(9, lsn(20), lsn(20), lsn(21), vec![change(2)])
@@ -218,19 +272,33 @@ mod tests {
 
     #[test]
     fn batch_rejects_end_before_commit() {
-        assert_eq!(TransactionBatch::try_new(1, lsn(3), lsn(3), lsn(2), Vec::new()), Err(TransactionValidationError::EndBeforeCommit));
+        assert_eq!(
+            TransactionBatch::try_new(1, lsn(3), lsn(3), lsn(2), Vec::new()),
+            Err(TransactionValidationError::EndBeforeCommit)
+        );
     }
 
     #[test]
     fn builder_preserves_boundaries_and_rejects_bad_sequences() {
         let mut builder = TransactionBuilder::new();
-        assert_eq!(builder.push(change(1)), Err(TransactionBuildError::ChangeOutsideTransaction));
-        assert_eq!(builder.commit(lsn(1), lsn(1)), Err(TransactionBuildError::CommitWithoutBegin));
+        assert_eq!(
+            builder.push(change(1)),
+            Err(TransactionBuildError::ChangeOutsideTransaction)
+        );
+        assert_eq!(
+            builder.commit(lsn(1), lsn(1)),
+            Err(TransactionBuildError::CommitWithoutBegin)
+        );
         builder.begin(4, lsn(20)).unwrap_or_else(|_| unreachable!());
         assert!(builder.is_open());
-        assert_eq!(builder.begin(5, lsn(21)), Err(TransactionBuildError::NestedTransaction));
+        assert_eq!(
+            builder.begin(5, lsn(21)),
+            Err(TransactionBuildError::NestedTransaction)
+        );
         builder.push(change(1)).unwrap_or_else(|_| unreachable!());
-        let batch = builder.commit(lsn(20), lsn(21)).unwrap_or_else(|_| unreachable!());
+        let batch = builder
+            .commit(lsn(20), lsn(21))
+            .unwrap_or_else(|_| unreachable!());
         assert_eq!(batch.final_lsn(), lsn(20));
         assert_eq!(batch.changes().len(), 1);
         assert_eq!(builder.last_commit_lsn(), lsn(20));
@@ -241,9 +309,14 @@ mod tests {
     fn commit_regression_keeps_transaction_open() {
         let mut builder = TransactionBuilder::new();
         builder.begin(1, lsn(5)).unwrap_or_else(|_| unreachable!());
-        let _ = builder.commit(lsn(5), lsn(5)).unwrap_or_else(|_| unreachable!());
+        let _ = builder
+            .commit(lsn(5), lsn(5))
+            .unwrap_or_else(|_| unreachable!());
         builder.begin(2, lsn(4)).unwrap_or_else(|_| unreachable!());
-        assert_eq!(builder.commit(lsn(4), lsn(4)), Err(TransactionBuildError::CommitLsnRegressed));
+        assert_eq!(
+            builder.commit(lsn(4), lsn(4)),
+            Err(TransactionBuildError::CommitLsnRegressed)
+        );
         assert!(builder.is_open());
     }
 
@@ -251,16 +324,40 @@ mod tests {
     fn invalid_open_transaction_is_rejected() {
         let mut builder = TransactionBuilder::new();
         builder.begin(1, lsn(9)).unwrap_or_else(|_| unreachable!());
-        assert_eq!(builder.commit(lsn(9), lsn(8)), Err(TransactionBuildError::InvalidTransaction(TransactionValidationError::EndBeforeCommit)));
+        assert_eq!(
+            builder.commit(lsn(9), lsn(8)),
+            Err(TransactionBuildError::InvalidTransaction(
+                TransactionValidationError::EndBeforeCommit
+            ))
+        );
     }
 
     #[test]
     fn errors_have_stable_messages() {
-        assert_eq!(TransactionValidationError::EndBeforeCommit.to_string(), "end_lsn is before commit_lsn");
-        assert_eq!(TransactionBuildError::NestedTransaction.to_string(), "nested transaction begin");
-        assert_eq!(TransactionBuildError::ChangeOutsideTransaction.to_string(), "row change outside transaction");
-        assert_eq!(TransactionBuildError::CommitWithoutBegin.to_string(), "commit without begin");
-        assert_eq!(TransactionBuildError::CommitLsnRegressed.to_string(), "commit LSN regressed");
-        assert_eq!(TransactionBuildError::InvalidTransaction(TransactionValidationError::EndBeforeCommit).to_string(), "invalid transaction: end_lsn is before commit_lsn");
+        assert_eq!(
+            TransactionValidationError::EndBeforeCommit.to_string(),
+            "end_lsn is before commit_lsn"
+        );
+        assert_eq!(
+            TransactionBuildError::NestedTransaction.to_string(),
+            "nested transaction begin"
+        );
+        assert_eq!(
+            TransactionBuildError::ChangeOutsideTransaction.to_string(),
+            "row change outside transaction"
+        );
+        assert_eq!(
+            TransactionBuildError::CommitWithoutBegin.to_string(),
+            "commit without begin"
+        );
+        assert_eq!(
+            TransactionBuildError::CommitLsnRegressed.to_string(),
+            "commit LSN regressed"
+        );
+        assert_eq!(
+            TransactionBuildError::InvalidTransaction(TransactionValidationError::EndBeforeCommit)
+                .to_string(),
+            "invalid transaction: end_lsn is before commit_lsn"
+        );
     }
 }

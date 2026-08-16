@@ -1085,12 +1085,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 
 [[package]]
+name = "veyra-availability"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+]
+
+[[package]]
+name = "veyra-cdc"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde",
+ "veyra-types",
+]
+
+[[package]]
 name = "veyra-runtime"
 version = "0.1.0"
 dependencies = [
  "arc-swap",
  "criterion",
  "serde",
+ "veyra-types",
+]
+
+[[package]]
+name = "veyra-segment"
+version = "0.1.0"
+dependencies = [
  "veyra-types",
 ]
 
@@ -1105,6 +1128,15 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "veyra-runtime",
+ "veyra-types",
+]
+
+[[package]]
+name = "veyra-storage"
+version = "0.1.0"
+dependencies = [
+ "arc-swap",
+ "veyra-segment",
  "veyra-types",
 ]
 

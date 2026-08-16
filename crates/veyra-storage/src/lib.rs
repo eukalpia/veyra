@@ -50,21 +50,34 @@ impl Generation {
         if by_type.is_empty() {
             return Err(StorageError::EmptyGeneration);
         }
-        Ok(Self { id, start_lsn, end_lsn, segments: by_type })
+        Ok(Self {
+            id,
+            start_lsn,
+            end_lsn,
+            segments: by_type,
+        })
     }
 
     #[must_use]
-    pub const fn id(&self) -> GenerationId { self.id }
+    pub const fn id(&self) -> GenerationId {
+        self.id
+    }
     #[must_use]
-    pub const fn start_lsn(&self) -> LogSequenceNumber { self.start_lsn }
+    pub const fn start_lsn(&self) -> LogSequenceNumber {
+        self.start_lsn
+    }
     #[must_use]
-    pub const fn end_lsn(&self) -> LogSequenceNumber { self.end_lsn }
+    pub const fn end_lsn(&self) -> LogSequenceNumber {
+        self.end_lsn
+    }
     #[must_use]
     pub fn segment(&self, segment_type: SegmentType) -> Option<&Arc<Segment>> {
         self.segments.get(&segment_type)
     }
     #[must_use]
-    pub fn segment_count(&self) -> usize { self.segments.len() }
+    pub fn segment_count(&self) -> usize {
+        self.segments.len()
+    }
 }
 
 #[derive(Debug)]
@@ -75,11 +88,15 @@ pub struct GenerationStore {
 impl GenerationStore {
     #[must_use]
     pub fn new(initial: Arc<Generation>) -> Self {
-        Self { current: ArcSwap::from(initial) }
+        Self {
+            current: ArcSwap::from(initial),
+        }
     }
 
     #[must_use]
-    pub fn load(&self) -> Arc<Generation> { self.current.load_full() }
+    pub fn load(&self) -> Arc<Generation> {
+        self.current.load_full()
+    }
 
     /// Atomically publishes a strictly newer validated generation and returns the previous one.
     pub fn publish(&self, next: Arc<Generation>) -> Result<Arc<Generation>, StorageError> {
@@ -105,15 +122,26 @@ pub enum StorageError {
     UnpublishedGeneration,
     LsnRangeReversed,
     EmptyGeneration,
-    SegmentGenerationMismatch { expected: GenerationId, actual: GenerationId },
+    SegmentGenerationMismatch {
+        expected: GenerationId,
+        actual: GenerationId,
+    },
     SegmentLsnMismatch(SegmentType),
     DuplicateSegmentType(SegmentType),
-    GenerationNotNewer { current: GenerationId, proposed: GenerationId },
-    PublishedLsnRegressed { current: LogSequenceNumber, proposed: LogSequenceNumber },
+    GenerationNotNewer {
+        current: GenerationId,
+        proposed: GenerationId,
+    },
+    PublishedLsnRegressed {
+        current: LogSequenceNumber,
+        proposed: LogSequenceNumber,
+    },
 }
 
 impl fmt::Display for StorageError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result { write!(formatter, "{self:?}") }
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{self:?}")
+    }
 }
 impl std::error::Error for StorageError {}
 
@@ -122,24 +150,30 @@ mod tests {
     use super::*;
 
     fn segment(kind: SegmentType, generation: u64, start: u64, end: u64) -> Arc<Segment> {
-        Arc::new(Segment::build(
-            kind,
-            0,
-            GenerationId::new(generation),
-            LogSequenceNumber::new(start),
-            LogSequenceNumber::new(end),
-            1,
-            vec![u8::try_from(generation).unwrap_or_default()],
-        ).unwrap_or_else(|_| unreachable!()))
+        Arc::new(
+            Segment::build(
+                kind,
+                0,
+                GenerationId::new(generation),
+                LogSequenceNumber::new(start),
+                LogSequenceNumber::new(end),
+                1,
+                vec![u8::try_from(generation).unwrap_or_default()],
+            )
+            .unwrap_or_else(|_| unreachable!()),
+        )
     }
 
     fn generation(id: u64, start: u64, end: u64) -> Arc<Generation> {
-        Arc::new(Generation::try_new(
-            GenerationId::new(id),
-            LogSequenceNumber::new(start),
-            LogSequenceNumber::new(end),
-            [segment(SegmentType::Availability, id, start, end)],
-        ).unwrap_or_else(|_| unreachable!()))
+        Arc::new(
+            Generation::try_new(
+                GenerationId::new(id),
+                LogSequenceNumber::new(start),
+                LogSequenceNumber::new(end),
+                [segment(SegmentType::Availability, id, start, end)],
+            )
+            .unwrap_or_else(|_| unreachable!()),
+        )
     }
 
     #[test]
@@ -152,24 +186,36 @@ mod tests {
         assert!(generation.segment(SegmentType::Availability).is_some());
         assert!(generation.segment(SegmentType::Pricing).is_none());
 
-        assert_eq!(Generation::try_new(
-            GenerationId::UNPUBLISHED,
-            LogSequenceNumber::ZERO,
-            LogSequenceNumber::ZERO,
-            [segment(SegmentType::Availability, 0, 0, 0)],
-        ).err(), Some(StorageError::UnpublishedGeneration));
-        assert_eq!(Generation::try_new(
-            GenerationId::new(1),
-            LogSequenceNumber::new(2),
-            LogSequenceNumber::new(1),
-            [segment(SegmentType::Availability, 1, 1, 1)],
-        ).err(), Some(StorageError::LsnRangeReversed));
-        assert_eq!(Generation::try_new(
-            GenerationId::new(1),
-            LogSequenceNumber::ZERO,
-            LogSequenceNumber::ZERO,
-            std::iter::empty(),
-        ).err(), Some(StorageError::EmptyGeneration));
+        assert_eq!(
+            Generation::try_new(
+                GenerationId::UNPUBLISHED,
+                LogSequenceNumber::ZERO,
+                LogSequenceNumber::ZERO,
+                [segment(SegmentType::Availability, 0, 0, 0)],
+            )
+            .err(),
+            Some(StorageError::UnpublishedGeneration)
+        );
+        assert_eq!(
+            Generation::try_new(
+                GenerationId::new(1),
+                LogSequenceNumber::new(2),
+                LogSequenceNumber::new(1),
+                [segment(SegmentType::Availability, 1, 1, 1)],
+            )
+            .err(),
+            Some(StorageError::LsnRangeReversed)
+        );
+        assert_eq!(
+            Generation::try_new(
+                GenerationId::new(1),
+                LogSequenceNumber::ZERO,
+                LogSequenceNumber::ZERO,
+                std::iter::empty(),
+            )
+            .err(),
+            Some(StorageError::EmptyGeneration)
+        );
     }
 
     #[test]
@@ -180,7 +226,10 @@ mod tests {
             LogSequenceNumber::new(20),
             [segment(SegmentType::Availability, 3, 10, 20)],
         );
-        assert!(matches!(wrong_generation, Err(StorageError::SegmentGenerationMismatch { .. })));
+        assert!(matches!(
+            wrong_generation,
+            Err(StorageError::SegmentGenerationMismatch { .. })
+        ));
 
         let wrong_lsn = Generation::try_new(
             GenerationId::new(2),
@@ -188,7 +237,10 @@ mod tests {
             LogSequenceNumber::new(20),
             [segment(SegmentType::Availability, 2, 11, 20)],
         );
-        assert_eq!(wrong_lsn.err(), Some(StorageError::SegmentLsnMismatch(SegmentType::Availability)));
+        assert_eq!(
+            wrong_lsn.err(),
+            Some(StorageError::SegmentLsnMismatch(SegmentType::Availability))
+        );
 
         let duplicate = Generation::try_new(
             GenerationId::new(2),
@@ -199,7 +251,12 @@ mod tests {
                 segment(SegmentType::Availability, 2, 10, 20),
             ],
         );
-        assert_eq!(duplicate.err(), Some(StorageError::DuplicateSegmentType(SegmentType::Availability)));
+        assert_eq!(
+            duplicate.err(),
+            Some(StorageError::DuplicateSegmentType(
+                SegmentType::Availability
+            ))
+        );
     }
 
     #[test]
@@ -208,7 +265,9 @@ mod tests {
         let store = GenerationStore::new(Arc::clone(&first));
         let old_reader = store.load();
         let second = generation(2, 1, 20);
-        let replaced = store.publish(Arc::clone(&second)).unwrap_or_else(|_| unreachable!());
+        let replaced = store
+            .publish(Arc::clone(&second))
+            .unwrap_or_else(|_| unreachable!());
         assert_eq!(replaced.id().get(), 1);
         assert_eq!(old_reader.id().get(), 1);
         assert_eq!(store.load().id().get(), 2);
@@ -218,8 +277,14 @@ mod tests {
     #[test]
     fn publication_rejects_generation_and_lsn_regression() {
         let store = GenerationStore::new(generation(5, 1, 50));
-        assert!(matches!(store.publish(generation(5, 1, 50)), Err(StorageError::GenerationNotNewer { .. })));
-        assert!(matches!(store.publish(generation(6, 1, 40)), Err(StorageError::PublishedLsnRegressed { .. })));
+        assert!(matches!(
+            store.publish(generation(5, 1, 50)),
+            Err(StorageError::GenerationNotNewer { .. })
+        ));
+        assert!(matches!(
+            store.publish(generation(6, 1, 40)),
+            Err(StorageError::PublishedLsnRegressed { .. })
+        ));
         assert_eq!(store.load().id().get(), 5);
     }
 }

@@ -136,7 +136,12 @@ fn decode_insert(cursor: &mut Cursor<'_>) -> Result<RowChange, PgOutputError> {
     let relation_id = cursor.u32_be()?;
     cursor.tag(b'N')?;
     let tuple = decode_tuple(cursor)?.encode()?;
-    Ok(RowChange::new(relation_id, ChangeKind::Insert, None, Some(tuple)))
+    Ok(RowChange::new(
+        relation_id,
+        ChangeKind::Insert,
+        None,
+        Some(tuple),
+    ))
 }
 
 fn decode_relation(cursor: &mut Cursor<'_>) -> Result<RelationMetadata, PgOutputError> {
@@ -163,7 +168,13 @@ fn decode_relation(cursor: &mut Cursor<'_>) -> Result<RelationMetadata, PgOutput
             type_modifier: cursor.i32_be()?,
         });
     }
-    Ok(RelationMetadata { relation_id, namespace, name, replica_identity, columns })
+    Ok(RelationMetadata {
+        relation_id,
+        namespace,
+        name,
+        replica_identity,
+        columns,
+    })
 }
 
 fn decode_update(cursor: &mut Cursor<'_>) -> Result<RowChange, PgOutputError> {
@@ -178,7 +189,12 @@ fn decode_update(cursor: &mut Cursor<'_>) -> Result<RowChange, PgOutputError> {
         return Err(PgOutputError::InvalidTupleTag(next_tag));
     }
     let new_tuple = decode_tuple(cursor)?.encode()?;
-    Ok(RowChange::new(relation_id, ChangeKind::Update, old_tuple, Some(new_tuple)))
+    Ok(RowChange::new(
+        relation_id,
+        ChangeKind::Update,
+        old_tuple,
+        Some(new_tuple),
+    ))
 }
 
 fn decode_delete(cursor: &mut Cursor<'_>) -> Result<RowChange, PgOutputError> {
@@ -188,12 +204,18 @@ fn decode_delete(cursor: &mut Cursor<'_>) -> Result<RowChange, PgOutputError> {
         return Err(PgOutputError::InvalidTupleTag(tag));
     }
     let old_tuple = decode_tuple(cursor)?.encode()?;
-    Ok(RowChange::new(relation_id, ChangeKind::Delete, Some(old_tuple), None))
+    Ok(RowChange::new(
+        relation_id,
+        ChangeKind::Delete,
+        Some(old_tuple),
+        None,
+    ))
 }
 
 fn decode_truncate(cursor: &mut Cursor<'_>) -> Result<PgOutputMessage, PgOutputError> {
     let raw_count = cursor.u32_be()?;
-    let count = usize::try_from(raw_count).map_err(|_| PgOutputError::InvalidTruncateCount(usize::MAX))?;
+    let count =
+        usize::try_from(raw_count).map_err(|_| PgOutputError::InvalidTruncateCount(usize::MAX))?;
     if count == 0 || count > MAX_TRUNCATE_RELATIONS {
         return Err(PgOutputError::InvalidTruncateCount(count));
     }
@@ -202,7 +224,10 @@ fn decode_truncate(cursor: &mut Cursor<'_>) -> Result<PgOutputMessage, PgOutputE
     for _ in 0..count {
         relation_ids.push(cursor.u32_be()?);
     }
-    Ok(PgOutputMessage::Truncate { relation_ids, options })
+    Ok(PgOutputMessage::Truncate {
+        relation_ids,
+        options,
+    })
 }
 
 fn decode_tuple(cursor: &mut Cursor<'_>) -> Result<TupleData, PgOutputError> {
@@ -229,50 +254,100 @@ struct Cursor<'a> {
 }
 
 impl<'a> Cursor<'a> {
-    const fn new(input: &'a [u8]) -> Self { Self { input, offset: 0 } }
+    const fn new(input: &'a [u8]) -> Self {
+        Self { input, offset: 0 }
+    }
 
     fn take(&mut self, len: usize) -> Result<&'a [u8], PgOutputError> {
-        let end = self.offset.checked_add(len).ok_or(PgOutputError::LengthOverflow)?;
-        let bytes = self.input.get(self.offset..end).ok_or(PgOutputError::UnexpectedEof)?;
+        let end = self
+            .offset
+            .checked_add(len)
+            .ok_or(PgOutputError::LengthOverflow)?;
+        let bytes = self
+            .input
+            .get(self.offset..end)
+            .ok_or(PgOutputError::UnexpectedEof)?;
         self.offset = end;
         Ok(bytes)
     }
-    fn u8(&mut self) -> Result<u8, PgOutputError> { Ok(self.take(1)?[0]) }
+    fn u8(&mut self) -> Result<u8, PgOutputError> {
+        Ok(self.take(1)?[0])
+    }
     fn u16_be(&mut self) -> Result<u16, PgOutputError> {
-        Ok(u16::from_be_bytes(self.take(2)?.try_into().map_err(|_| PgOutputError::UnexpectedEof)?))
+        Ok(u16::from_be_bytes(
+            self.take(2)?
+                .try_into()
+                .map_err(|_| PgOutputError::UnexpectedEof)?,
+        ))
     }
     fn u32_be(&mut self) -> Result<u32, PgOutputError> {
-        Ok(u32::from_be_bytes(self.take(4)?.try_into().map_err(|_| PgOutputError::UnexpectedEof)?))
+        Ok(u32::from_be_bytes(
+            self.take(4)?
+                .try_into()
+                .map_err(|_| PgOutputError::UnexpectedEof)?,
+        ))
     }
     fn i32_be(&mut self) -> Result<i32, PgOutputError> {
-        Ok(i32::from_be_bytes(self.take(4)?.try_into().map_err(|_| PgOutputError::UnexpectedEof)?))
+        Ok(i32::from_be_bytes(
+            self.take(4)?
+                .try_into()
+                .map_err(|_| PgOutputError::UnexpectedEof)?,
+        ))
     }
     fn u64_be(&mut self) -> Result<u64, PgOutputError> {
-        Ok(u64::from_be_bytes(self.take(8)?.try_into().map_err(|_| PgOutputError::UnexpectedEof)?))
+        Ok(u64::from_be_bytes(
+            self.take(8)?
+                .try_into()
+                .map_err(|_| PgOutputError::UnexpectedEof)?,
+        ))
     }
     fn i64_be(&mut self) -> Result<i64, PgOutputError> {
-        Ok(i64::from_be_bytes(self.take(8)?.try_into().map_err(|_| PgOutputError::UnexpectedEof)?))
+        Ok(i64::from_be_bytes(
+            self.take(8)?
+                .try_into()
+                .map_err(|_| PgOutputError::UnexpectedEof)?,
+        ))
     }
     fn cstring(&mut self, max: usize) -> Result<String, PgOutputError> {
-        let tail = self.input.get(self.offset..).ok_or(PgOutputError::UnexpectedEof)?;
-        let terminator = tail.iter().position(|byte| *byte == 0).ok_or(PgOutputError::UnterminatedCString)?;
-        if terminator > max { return Err(PgOutputError::StringTooLong(terminator)); }
+        let tail = self
+            .input
+            .get(self.offset..)
+            .ok_or(PgOutputError::UnexpectedEof)?;
+        let terminator = tail
+            .iter()
+            .position(|byte| *byte == 0)
+            .ok_or(PgOutputError::UnterminatedCString)?;
+        if terminator > max {
+            return Err(PgOutputError::StringTooLong(terminator));
+        }
         let bytes = self.take(terminator)?;
         let _ = self.u8()?;
-        Ok(core::str::from_utf8(bytes).map_err(|_| PgOutputError::InvalidUtf8)?.to_owned())
+        Ok(core::str::from_utf8(bytes)
+            .map_err(|_| PgOutputError::InvalidUtf8)?
+            .to_owned())
     }
     fn bytes_with_u32_len(&mut self, max: usize) -> Result<Vec<u8>, PgOutputError> {
         let raw = self.u32_be()?;
         let len = usize::try_from(raw).map_err(|_| PgOutputError::LengthOverflow)?;
-        if len > max { return Err(PgOutputError::ColumnTooLarge(len)); }
+        if len > max {
+            return Err(PgOutputError::ColumnTooLarge(len));
+        }
         Ok(self.take(len)?.to_vec())
     }
     fn tag(&mut self, expected: u8) -> Result<(), PgOutputError> {
         let actual = self.u8()?;
-        if actual == expected { Ok(()) } else { Err(PgOutputError::InvalidTupleTag(actual)) }
+        if actual == expected {
+            Ok(())
+        } else {
+            Err(PgOutputError::InvalidTupleTag(actual))
+        }
     }
     fn finish(&self) -> Result<(), PgOutputError> {
-        if self.offset == self.input.len() { Ok(()) } else { Err(PgOutputError::TrailingBytes(self.input.len() - self.offset)) }
+        if self.offset == self.input.len() {
+            Ok(())
+        } else {
+            Err(PgOutputError::TrailingBytes(self.input.len() - self.offset))
+        }
     }
 }
 
@@ -294,7 +369,9 @@ pub enum PgOutputError {
 }
 
 impl fmt::Display for PgOutputError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result { write!(formatter, "{self:?}") }
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{self:?}")
+    }
 }
 impl std::error::Error for PgOutputError {}
 
@@ -316,13 +393,22 @@ mod tests {
         begin.extend_from_slice(&10_u64.to_be_bytes());
         begin.extend_from_slice(&20_i64.to_be_bytes());
         begin.extend_from_slice(&30_u32.to_be_bytes());
-        assert_eq!(PgOutputDecoder::decode(&begin), Ok(PgOutputMessage::Begin { final_lsn: LogSequenceNumber::new(10), commit_timestamp_micros: 20, xid: 30 }));
+        assert_eq!(
+            PgOutputDecoder::decode(&begin),
+            Ok(PgOutputMessage::Begin {
+                final_lsn: LogSequenceNumber::new(10),
+                commit_timestamp_micros: 20,
+                xid: 30
+            })
+        );
 
         let mut commit = vec![b'C', 0];
         commit.extend_from_slice(&40_u64.to_be_bytes());
         commit.extend_from_slice(&41_u64.to_be_bytes());
         commit.extend_from_slice(&50_i64.to_be_bytes());
-        assert!(matches!(PgOutputDecoder::decode(&commit), Ok(PgOutputMessage::Commit { commit_lsn, .. }) if commit_lsn.get() == 40));
+        assert!(
+            matches!(PgOutputDecoder::decode(&commit), Ok(PgOutputMessage::Commit { commit_lsn, .. }) if commit_lsn.get() == 40)
+        );
 
         let mut relation = vec![b'R'];
         relation.extend_from_slice(&7_u32.to_be_bytes());
@@ -334,7 +420,9 @@ mod tests {
         relation.extend_from_slice(&2950_u32.to_be_bytes());
         relation.extend_from_slice(&(-1_i32).to_be_bytes());
         let decoded = PgOutputDecoder::decode(&relation).unwrap_or_else(|_| unreachable!());
-        assert!(matches!(decoded, PgOutputMessage::Relation(meta) if meta.relation_id == 7 && meta.columns.len() == 1));
+        assert!(
+            matches!(decoded, PgOutputMessage::Relation(meta) if meta.relation_id == 7 && meta.columns.len() == 1)
+        );
     }
 
     #[test]
@@ -344,7 +432,9 @@ mod tests {
         insert.extend_from_slice(&7_u32.to_be_bytes());
         insert.push(b'N');
         insert.extend_from_slice(&tuple);
-        assert!(matches!(PgOutputDecoder::decode(&insert), Ok(PgOutputMessage::Change(change)) if change.kind == ChangeKind::Insert));
+        assert!(
+            matches!(PgOutputDecoder::decode(&insert), Ok(PgOutputMessage::Change(change)) if change.kind == ChangeKind::Insert)
+        );
 
         let mut update = vec![b'U'];
         update.extend_from_slice(&7_u32.to_be_bytes());
@@ -352,45 +442,77 @@ mod tests {
         update.extend_from_slice(&tuple);
         update.push(b'N');
         update.extend_from_slice(&tuple);
-        assert!(matches!(PgOutputDecoder::decode(&update), Ok(PgOutputMessage::Change(change)) if change.kind == ChangeKind::Update && change.old_tuple.is_some()));
+        assert!(
+            matches!(PgOutputDecoder::decode(&update), Ok(PgOutputMessage::Change(change)) if change.kind == ChangeKind::Update && change.old_tuple.is_some())
+        );
 
         let mut delete = vec![b'D'];
         delete.extend_from_slice(&7_u32.to_be_bytes());
         delete.push(b'O');
         delete.extend_from_slice(&tuple);
-        assert!(matches!(PgOutputDecoder::decode(&delete), Ok(PgOutputMessage::Change(change)) if change.kind == ChangeKind::Delete));
+        assert!(
+            matches!(PgOutputDecoder::decode(&delete), Ok(PgOutputMessage::Change(change)) if change.kind == ChangeKind::Delete)
+        );
 
         let mut truncate = vec![b'T'];
         truncate.extend_from_slice(&2_u32.to_be_bytes());
         truncate.push(3);
         truncate.extend_from_slice(&9_u32.to_be_bytes());
         truncate.extend_from_slice(&10_u32.to_be_bytes());
-        assert_eq!(PgOutputDecoder::decode(&truncate), Ok(PgOutputMessage::Truncate { relation_ids: vec![9, 10], options: 3 }));
+        assert_eq!(
+            PgOutputDecoder::decode(&truncate),
+            Ok(PgOutputMessage::Truncate {
+                relation_ids: vec![9, 10],
+                options: 3
+            })
+        );
     }
 
     #[test]
     fn tuple_encoding_preserves_all_kinds() {
-        let tuple = TupleData { columns: vec![TupleColumn::Null, TupleColumn::UnchangedToast, TupleColumn::Text(b"x".to_vec()), TupleColumn::Binary(vec![1, 2])] };
+        let tuple = TupleData {
+            columns: vec![
+                TupleColumn::Null,
+                TupleColumn::UnchangedToast,
+                TupleColumn::Text(b"x".to_vec()),
+                TupleColumn::Binary(vec![1, 2]),
+            ],
+        };
         let encoded = tuple.encode().unwrap_or_else(|_| unreachable!());
         assert!(!encoded.is_empty());
     }
 
     #[test]
     fn rejects_malformed_and_bounded_inputs() {
-        assert_eq!(PgOutputDecoder::decode(&[]), Err(PgOutputError::UnexpectedEof));
-        assert_eq!(PgOutputDecoder::decode(b"X"), Err(PgOutputError::UnsupportedMessage(b'X')));
+        assert_eq!(
+            PgOutputDecoder::decode(&[]),
+            Err(PgOutputError::UnexpectedEof)
+        );
+        assert_eq!(
+            PgOutputDecoder::decode(b"X"),
+            Err(PgOutputError::UnsupportedMessage(b'X'))
+        );
         let mut bad = vec![b'I'];
         bad.extend_from_slice(&1_u32.to_be_bytes());
         bad.push(b'K');
-        assert_eq!(PgOutputDecoder::decode(&bad), Err(PgOutputError::InvalidTupleTag(b'K')));
+        assert_eq!(
+            PgOutputDecoder::decode(&bad),
+            Err(PgOutputError::InvalidTupleTag(b'K'))
+        );
 
         let mut huge = vec![b'I'];
         huge.extend_from_slice(&1_u32.to_be_bytes());
         huge.push(b'N');
         huge.extend_from_slice(&1_u16.to_be_bytes());
         huge.push(b't');
-        huge.extend_from_slice(&((MAX_COLUMN_BYTES as u32) + 1).to_be_bytes());
-        assert_eq!(PgOutputDecoder::decode(&huge), Err(PgOutputError::ColumnTooLarge(MAX_COLUMN_BYTES + 1)));
+        let oversized = u32::try_from(MAX_COLUMN_BYTES)
+            .unwrap_or(u32::MAX)
+            .saturating_add(1);
+        huge.extend_from_slice(&oversized.to_be_bytes());
+        assert_eq!(
+            PgOutputDecoder::decode(&huge),
+            Err(PgOutputError::ColumnTooLarge(MAX_COLUMN_BYTES + 1))
+        );
     }
 
     #[test]
@@ -400,13 +522,19 @@ mod tests {
         relation.extend_from_slice(b"p\0t\0");
         relation.push(b'x');
         relation.extend_from_slice(&0_u16.to_be_bytes());
-        assert_eq!(PgOutputDecoder::decode(&relation), Err(PgOutputError::InvalidReplicaIdentity(b'x')));
+        assert_eq!(
+            PgOutputDecoder::decode(&relation),
+            Err(PgOutputError::InvalidReplicaIdentity(b'x'))
+        );
 
         let mut trailing = vec![b'B'];
         trailing.extend_from_slice(&1_u64.to_be_bytes());
         trailing.extend_from_slice(&2_i64.to_be_bytes());
         trailing.extend_from_slice(&3_u32.to_be_bytes());
         trailing.push(0);
-        assert_eq!(PgOutputDecoder::decode(&trailing), Err(PgOutputError::TrailingBytes(1)));
+        assert_eq!(
+            PgOutputDecoder::decode(&trailing),
+            Err(PgOutputError::TrailingBytes(1))
+        );
     }
 }

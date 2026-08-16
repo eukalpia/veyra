@@ -15,7 +15,9 @@ pub struct TransactionStream {
 
 impl TransactionStream {
     #[must_use]
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     pub fn consume(
         &mut self,
@@ -26,9 +28,11 @@ impl TransactionStream {
                 self.builder.begin(xid, final_lsn)?;
                 Ok(None)
             }
-            PgOutputMessage::Commit { commit_lsn, end_lsn, .. } => {
-                Ok(Some(self.builder.commit(commit_lsn, end_lsn)?))
-            }
+            PgOutputMessage::Commit {
+                commit_lsn,
+                end_lsn,
+                ..
+            } => Ok(Some(self.builder.commit(commit_lsn, end_lsn)?)),
             PgOutputMessage::Relation(metadata) => {
                 self.relations.insert(metadata.relation_id, metadata);
                 Ok(None)
@@ -59,7 +63,9 @@ impl TransactionStream {
     }
 
     #[must_use]
-    pub const fn transaction_open(&self) -> bool { self.builder.is_open() }
+    pub const fn transaction_open(&self) -> bool {
+        self.builder.is_open()
+    }
 
     fn require_relation(&self, relation_id: u32) -> Result<(), StreamError> {
         if self.relations.contains_key(&relation_id) {
@@ -86,7 +92,9 @@ impl fmt::Display for StreamError {
 }
 impl std::error::Error for StreamError {}
 impl From<TransactionBuildError> for StreamError {
-    fn from(value: TransactionBuildError) -> Self { Self::Transaction(value) }
+    fn from(value: TransactionBuildError) -> Self {
+        Self::Transaction(value)
+    }
 }
 
 #[cfg(test)]
@@ -124,7 +132,10 @@ mod tests {
     #[test]
     fn emits_nothing_until_commit() {
         let mut stream = TransactionStream::new();
-        assert_eq!(stream.consume(PgOutputMessage::Relation(relation(7))), Ok(None));
+        assert_eq!(
+            stream.consume(PgOutputMessage::Relation(relation(7))),
+            Ok(None)
+        );
         assert!(stream.relation(7).is_some());
         assert_eq!(stream.consume(begin(9, 20)), Ok(None));
         assert!(stream.transaction_open());
@@ -137,7 +148,9 @@ mod tests {
             ))),
             Ok(None)
         );
-        let batch = stream.consume(commit(20)).unwrap_or_else(|_| unreachable!());
+        let batch = stream
+            .consume(commit(20))
+            .unwrap_or_else(|_| unreachable!());
         let batch = batch.unwrap_or_else(|| unreachable!());
         assert_eq!(batch.xid(), 9);
         assert_eq!(batch.final_lsn().get(), 20);
@@ -148,7 +161,9 @@ mod tests {
     #[test]
     fn unknown_relation_fails_closed() {
         let mut stream = TransactionStream::new();
-        stream.consume(begin(1, 5)).unwrap_or_else(|_| unreachable!());
+        stream
+            .consume(begin(1, 5))
+            .unwrap_or_else(|_| unreachable!());
         assert_eq!(
             stream.consume(PgOutputMessage::Change(RowChange::new(
                 99,
@@ -164,14 +179,32 @@ mod tests {
     #[test]
     fn truncate_expands_all_relations_inside_one_transaction() {
         let mut stream = TransactionStream::new();
-        stream.consume(PgOutputMessage::Relation(relation(1))).unwrap_or_else(|_| unreachable!());
-        stream.consume(PgOutputMessage::Relation(relation(2))).unwrap_or_else(|_| unreachable!());
-        stream.consume(begin(3, 10)).unwrap_or_else(|_| unreachable!());
-        stream.consume(PgOutputMessage::Truncate { relation_ids: vec![1, 2], options: 3 })
+        stream
+            .consume(PgOutputMessage::Relation(relation(1)))
             .unwrap_or_else(|_| unreachable!());
-        let batch = stream.consume(commit(10)).unwrap_or_else(|_| unreachable!()).unwrap_or_else(|| unreachable!());
+        stream
+            .consume(PgOutputMessage::Relation(relation(2)))
+            .unwrap_or_else(|_| unreachable!());
+        stream
+            .consume(begin(3, 10))
+            .unwrap_or_else(|_| unreachable!());
+        stream
+            .consume(PgOutputMessage::Truncate {
+                relation_ids: vec![1, 2],
+                options: 3,
+            })
+            .unwrap_or_else(|_| unreachable!());
+        let batch = stream
+            .consume(commit(10))
+            .unwrap_or_else(|_| unreachable!())
+            .unwrap_or_else(|| unreachable!());
         assert_eq!(batch.changes().len(), 2);
-        assert!(batch.changes().iter().all(|change| change.kind == ChangeKind::Truncate));
+        assert!(
+            batch
+                .changes()
+                .iter()
+                .all(|change| change.kind == ChangeKind::Truncate)
+        );
     }
 
     #[test]
@@ -179,13 +212,18 @@ mod tests {
         let mut stream = TransactionStream::new();
         assert_eq!(
             stream.consume(commit(1)),
-            Err(StreamError::Transaction(TransactionBuildError::CommitWithoutBegin))
+            Err(StreamError::Transaction(
+                TransactionBuildError::CommitWithoutBegin
+            ))
         );
     }
 
     #[test]
     fn error_messages_are_stable() {
-        assert_eq!(StreamError::UnknownRelation(4).to_string(), "unknown relation 4");
+        assert_eq!(
+            StreamError::UnknownRelation(4).to_string(),
+            "unknown relation 4"
+        );
         assert_eq!(
             StreamError::Transaction(TransactionBuildError::CommitWithoutBegin).to_string(),
             "transaction stream error: commit without begin"
