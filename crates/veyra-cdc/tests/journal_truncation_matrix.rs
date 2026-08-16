@@ -38,12 +38,7 @@ fn batch() -> TransactionBatch {
         LogSequenceNumber::new(101),
         vec![
             RowChange::new(1, ChangeKind::Insert, None, Some(vec![1, 2, 3])),
-            RowChange::new(
-                2,
-                ChangeKind::Update,
-                Some(vec![4, 5]),
-                Some(vec![6, 7, 8]),
-            ),
+            RowChange::new(2, ChangeKind::Update, Some(vec![4, 5]), Some(vec![6, 7, 8])),
             RowChange::new(3, ChangeKind::Delete, Some(vec![9]), None),
             RowChange::new(4, ChangeKind::Truncate, None, None),
         ],
@@ -54,9 +49,7 @@ fn batch() -> TransactionBatch {
 fn valid_record() -> Vec<u8> {
     let source = path("source");
     let mut journal = Journal::open(&source).unwrap_or_else(|_| unreachable!());
-    journal
-        .append(&batch())
-        .unwrap_or_else(|_| unreachable!());
+    journal.append(&batch()).unwrap_or_else(|_| unreachable!());
     drop(journal);
     let record = fs::read(&source).unwrap_or_else(|_| unreachable!());
     let _ = fs::remove_file(source);
