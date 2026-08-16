@@ -3,7 +3,7 @@ use veyra_occupancy::OccupancyError;
 use veyra_party::{AgeEvidence, BookingParty, CivilDate, Traveler, TravelerId};
 use veyra_pricing::{MoneyMicros, OccupancyAdjustment, PriceVector, PricingError};
 use veyra_query::{QueryError, RoomDocument, SearchEngine, StayQuery};
-use veyra_ranking::{RankingError, RankingKind, RankingProfile};
+use veyra_ranking::{MAX_TOP_K, RankingError, RankingKind, RankingProfile};
 use veyra_restrictions::{RESTRICTION_SCHEMA_V1, RestrictionRule, compile as compile_restrictions};
 use veyra_rule_compiler::{RULE_SCHEMA_V1, compile as compile_rule};
 use veyra_rules::Rule;
@@ -123,7 +123,16 @@ fn catalog_and_query_validation_fail_closed() {
     request.limit = 0;
     assert_eq!(engine.search(&request), Err(QueryError::InvalidLimit(0)));
     let mut request = query(&p, 10);
+    request.limit = MAX_TOP_K + 1;
+    assert_eq!(
+        engine.search(&request),
+        Err(QueryError::InvalidLimit(MAX_TOP_K + 1))
+    );
+    let mut request = query(&p, 10);
     request.check_out_day = request.check_in_day;
+    assert_eq!(engine.search(&request), Err(QueryError::InvalidStayRange));
+    let mut request = query(&p, 10);
+    request.check_out_day = request.check_in_day.saturating_sub(1);
     assert_eq!(engine.search(&request), Err(QueryError::InvalidStayRange));
     let mut request = query(&p, 10);
     request.budget = Some(MoneyMicros::signed(-1));
@@ -133,6 +142,14 @@ fn catalog_and_query_validation_fail_closed() {
 #[test]
 fn service_day_pricing_occupancy_and_ranking_errors_propagate() {
     let p = party(2);
+
+    let boundary = u32::try_from(i32::MAX - 1).unwrap_or_default();
+    let boundary_engine = engine(document(0, 4, i32::MAX - 1), boundary);
+    assert_eq!(
+        boundary_engine.search(&query(&p, boundary)),
+        Err(QueryError::ServiceDayOutOfRange)
+    );
+
     let huge = u32::try_from(i32::MAX)
         .unwrap_or_default()
         .saturating_add(1);
@@ -194,6 +211,14 @@ fn restriction_and_budget_rejections_are_explainable_not_errors() {
     assert!(result.hits.is_empty());
     assert_eq!(result.explain.priced_candidates, 1);
     assert_eq!(result.explain.budget_candidates, 0);
+
+    let mut request = query(&p, 10);
+    request.budget = Some(money(200));
+    let result = budget_engine
+        .search(&request)
+        .unwrap_or_else(|_| unreachable!());
+    assert_eq!(result.hits.len(), 1);
+    assert_eq!(result.explain.budget_candidates, 1);
 }
 
 #[test]
