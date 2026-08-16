@@ -1,0 +1,82 @@
+-            .explored_states
+-            .checked_add(1)
+-            .ok_or(SolverError::StateBudgetExhausted)?;
++        context.explored_states += 1;
+         if context.explored_states > context.config.max_states {
+             return Err(SolverError::StateBudgetExhausted);
+         }
+@@ -351,13 +310,13 @@ fn layout_soft_penalty(context: &SearchContext<'_>) -> Result<u32, SolverError>
+             RoomingRelation::SameBuilding => left_offer.building == right_offer.building,
+             relation => return Err(SolverError::UnsupportedPreference(relation)),
+         };
+-        let violated = match intent.strength {
+-            ConstraintStrength::Prefer => !satisfied,
+-            ConstraintStrength::Avoid => satisfied,
+-            ConstraintStrength::Must => false,
++        let violated = if intent.strength == ConstraintStrength::Prefer {
++            !satisfied
++        } else {
++            satisfied
+         };
+         if violated {
+-            penalty = penalty.checked_add(1).ok_or(SolverError::PenaltyOverflow)?;
++            penalty += 1;
+         }
+     }
+     Ok(penalty)
+@@ -376,15 +335,46 @@ fn assignment_of(context: &SearchContext<'_>, traveler: TravelerId) -> Result<us
+         .ok_or(SolverError::InternalInvariant)
+ }
+ 
+-fn solution_canonical_key(
+-    solution: &StaySolution,
+-) -> (MoneyMicros, usize, u32, Vec<RoomAllocation>) {
+-    (
+-        solution.total_price,
+-        solution.rooms.len(),
+-        solution.soft_penalty,
+-        solution.rooms.clone(),
+-    )
++fn select_best(
++    solutions: &[StaySolution],
++    compare: fn(&StaySolution, &StaySolution) -> Ordering,
++) -> StaySolution {
++    let mut best = &solutions[0];
++    for solution in &solutions[1..] {
++        if compare(solution, best).is_lt() {
++            best = solution;
++        }
++    }
++    best.clone()
++}
++
++fn compare_canonical(left: &StaySolution, right: &StaySolution) -> Ordering {
++    left.total_price
++        .cmp(&right.total_price)
++        .then_with(|| left.rooms.len().cmp(&right.rooms.len()))
++        .then_with(|| left.soft_penalty.cmp(&right.soft_penalty))
++        .then_with(|| left.rooms.cmp(&right.rooms))
++}
++
++fn compare_cheapest(left: &StaySolution, right: &StaySolution) -> Ordering {
++    compare_canonical(left, right)
++}
++
++fn compare_fewest_rooms(left: &StaySolution, right: &StaySolution) -> Ordering {
++    left.rooms
++        .len()
++        .cmp(&right.rooms.len())
++        .then_with(|| left.total_price.cmp(&right.total_price))
++        .then_with(|| left.soft_penalty.cmp(&right.soft_penalty))
++        .then_with(|| left.rooms.cmp(&right.rooms))
++}
++
++fn compare_family_layout(left: &StaySolution, right: &StaySolution) -> Ordering {
++    left.soft_penalty
++        .cmp(&right.soft_penalty)
++        .then_with(|| left.total_price.cmp(&right.total_price))
++        .then_with(|| left.rooms.len().cmp(&right.rooms.len()))
++        .then_with(|| left.rooms.cmp(&right.rooms))
+ }
+ 
+ #[derive(Clone, Copy, Debug, Eq, PartialEq)]
