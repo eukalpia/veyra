@@ -114,6 +114,7 @@ jobs:
           --workspace
           --all-features
           --lib
+          --tests
           --locked
           --summary-only
           --show-missing-lines
