@@ -392,7 +392,7 @@ mod tests {
         .unwrap_or_else(|_| unreachable!())
     }
 
-    fn query<'a>(party: &'a BookingParty, budget: Option<MoneyMicros>) -> StayQuery<'a> {
+    fn query(party: &BookingParty, budget: Option<MoneyMicros>) -> StayQuery<'_> {
         StayQuery {
             destination_id: 1,
             check_in_day: 10,
