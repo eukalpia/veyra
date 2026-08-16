@@ -26,12 +26,7 @@ fn batch() -> TransactionBatch {
         LogSequenceNumber::new(20),
         LogSequenceNumber::new(20),
         LogSequenceNumber::new(21),
-        vec![RowChange::new(
-            11,
-            ChangeKind::Insert,
-            None,
-            Some(vec![9]),
-        )],
+        vec![RowChange::new(11, ChangeKind::Insert, None, Some(vec![9]))],
     )
     .unwrap_or_else(|_| unreachable!())
 }
@@ -51,7 +46,10 @@ fn crc32c(bytes: &[u8]) -> u32 {
 fn valid_bytes(label: &str) -> (PathBuf, Vec<u8>) {
     let file_path = path(label);
     let mut journal = Journal::open(&file_path).unwrap_or_else(|_| unreachable!());
-    assert!(matches!(journal.append(&batch()), Ok(ReplayDecision::Apply)));
+    assert!(matches!(
+        journal.append(&batch()),
+        Ok(ReplayDecision::Apply)
+    ));
     drop(journal);
     let bytes = fs::read(&file_path).unwrap_or_else(|_| unreachable!());
     (file_path, bytes)
@@ -79,9 +77,7 @@ fn write_variant(path: &Path, bytes: &[u8]) {
 fn strict_replay_rejects_an_incomplete_tail() {
     let file_path = path("tail");
     let mut journal = Journal::open(&file_path).unwrap_or_else(|_| unreachable!());
-    journal
-        .append(&batch())
-        .unwrap_or_else(|_| unreachable!());
+    journal.append(&batch()).unwrap_or_else(|_| unreachable!());
     let valid_len = fs::metadata(&file_path)
         .unwrap_or_else(|_| unreachable!())
         .len();
@@ -184,11 +180,7 @@ fn malformed_payload_tags_eof_and_trailing_bytes_fail_closed() {
     variant.extend_from_slice(&bytes[..HEADER_LEN + len]);
     variant.push(0);
     variant.extend_from_slice(&[0; 4]);
-    variant[8..16].copy_from_slice(
-        &u64::try_from(len + 1)
-            .unwrap_or(u64::MAX)
-            .to_le_bytes(),
-    );
+    variant[8..16].copy_from_slice(&u64::try_from(len + 1).unwrap_or(u64::MAX).to_le_bytes());
     rewrite_crc(&mut variant);
     write_variant(&trailing, &variant);
     assert!(matches!(
