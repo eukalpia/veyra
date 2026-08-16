@@ -1,0 +1,23 @@
+[package]
+name = "veyra-query"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+veyra-availability = { version = "0.1.0", path = "../veyra-availability" }
+veyra-occupancy = { version = "0.1.0", path = "../veyra-occupancy" }
+veyra-party = { version = "0.1.0", path = "../veyra-party" }
+veyra-pricing = { version = "0.1.0", path = "../veyra-pricing" }
+veyra-ranking = { version = "0.1.0", path = "../veyra-ranking" }
+veyra-restrictions = { version = "0.1.0", path = "../veyra-restrictions" }
+veyra-rule-compiler = { version = "0.1.0", path = "../veyra-rule-compiler" }
+
+[dev-dependencies]
+veyra-rules = { version = "0.1.0", path = "../veyra-rules" }
+
+[lints]
+workspace = true
