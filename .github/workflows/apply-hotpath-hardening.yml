@@ -5,7 +5,7 @@ on:
     branches:
       - agent/m0-foundation-ci
     paths:
-      - .github/veyra-hotpath-hardening.patch
+      - .github/hotpath-patch/READY
 
 permissions:
   contents: write
@@ -27,9 +27,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git apply --check .github/veyra-hotpath-hardening.patch
-          git apply --index .github/veyra-hotpath-hardening.patch
-          git rm .github/veyra-hotpath-hardening.patch
+          cat .github/hotpath-patch/part-* > /tmp/veyra-hotpath.patch
+          git apply --check /tmp/veyra-hotpath.patch
+          git apply --index /tmp/veyra-hotpath.patch
+          git rm -r .github/hotpath-patch
           git rm .github/workflows/apply-hotpath-hardening.yml
           git config user.name "Veyra CI"
           git config user.email "120781817+eukalpia@users.noreply.github.com"
