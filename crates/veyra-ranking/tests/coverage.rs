@@ -19,11 +19,7 @@ fn candidate(room_id: u32) -> RankCandidate {
 fn candidate_cardinality_is_bounded_before_sorting() {
     let candidates = vec![candidate(1); MAX_RANK_CANDIDATES + 1];
     assert_eq!(
-        top_k(
-            RankingProfile::v1(RankingKind::Cheapest),
-            &candidates,
-            1
-        ),
+        top_k(RankingProfile::v1(RankingKind::Cheapest), &candidates, 1),
         Err(RankingError::TooManyCandidates(MAX_RANK_CANDIDATES + 1))
     );
 }
