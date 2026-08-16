@@ -245,7 +245,7 @@ fn sync_parent(path: &Path) -> Result<(), SegmentError> {
     }
     #[cfg(not(unix))]
     {
-        let _ = parent;
+        let _ = std::fs::metadata(parent)?;
     }
     Ok(())
 }
