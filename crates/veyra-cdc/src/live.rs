@@ -109,14 +109,11 @@ where
 
 impl<E> std::error::Error for CheckpointApplyError<E> where E: std::error::Error + 'static {}
 
-pub fn recover_checkpointed<E, F>(
+pub fn recover_checkpointed<E>(
     processor: &mut DurableTransactionProcessor,
     checkpoint: &mut AppliedCheckpoint,
-    apply: &mut F,
-) -> Result<LogSequenceNumber, LiveReplicationError<E>>
-where
-    F: FnMut(&TransactionBatch) -> Result<(), E>,
-{
+    apply: &mut dyn FnMut(&TransactionBatch) -> Result<(), E>,
+) -> Result<LogSequenceNumber, LiveReplicationError<E>> {
     let target = checkpoint.state();
     let found_target = Cell::new(target.commit_lsn() == LogSequenceNumber::ZERO);
     let mut checkpointing_apply = |batch: &TransactionBatch| {
@@ -141,16 +138,13 @@ where
     Ok(checkpoint.state().end_lsn())
 }
 
-pub fn process_replication_event<E, F>(
+pub fn process_replication_event<E>(
     processor: &mut DurableTransactionProcessor,
     checkpoint: &mut AppliedCheckpoint,
     state: &mut LiveReplicationState,
     event: ReplicationEvent,
-    apply: &mut F,
-) -> Result<LiveEventOutcome, LiveReplicationError<E>>
-where
-    F: FnMut(&TransactionBatch) -> Result<(), E>,
-{
+    apply: &mut dyn FnMut(&TransactionBatch) -> Result<(), E>,
+) -> Result<LiveEventOutcome, LiveReplicationError<E>> {
     match event {
         ReplicationEvent::KeepAlive { wal_end, .. } => {
             state.observe_received(wal_end);
@@ -258,14 +252,11 @@ pub struct LiveReplicationDriver {
 
 impl LiveReplicationDriver {
     /// Opens durable state and replays it up to the applied checkpoint before accepting events.
-    pub fn open<E, F>(
-        journal_path: impl AsRef<Path>,
-        checkpoint_path: impl AsRef<Path>,
-        apply: &mut F,
-    ) -> Result<Self, LiveReplicationError<E>>
-    where
-        F: FnMut(&TransactionBatch) -> Result<(), E>,
-    {
+    pub fn open<E>(
+        journal_path: &Path,
+        checkpoint_path: &Path,
+        apply: &mut dyn FnMut(&TransactionBatch) -> Result<(), E>,
+    ) -> Result<Self, LiveReplicationError<E>> {
         let mut processor = DurableTransactionProcessor::open(journal_path)
             .map_err(LiveReplicationError::Journal)?;
         let mut checkpoint =
@@ -287,14 +278,11 @@ impl LiveReplicationDriver {
     }
 
     /// Processes one transport event and records deterministic run counters.
-    pub fn process<E, F>(
+    pub fn process<E>(
         &mut self,
         event: ReplicationEvent,
-        apply: &mut F,
-    ) -> Result<LiveEventOutcome, LiveReplicationError<E>>
-    where
-        F: FnMut(&TransactionBatch) -> Result<(), E>,
-    {
+        apply: &mut dyn FnMut(&TransactionBatch) -> Result<(), E>,
+    ) -> Result<LiveEventOutcome, LiveReplicationError<E>> {
         self.events_seen = self.events_seen.saturating_add(1);
         let outcome = process_replication_event(
             &mut self.processor,
@@ -325,15 +313,12 @@ impl LiveReplicationDriver {
 /// This thin adapter is covered by the `PostgreSQL` integration suite rather than the hermetic
 /// production-core coverage job.
 // coverage: external-postgres-transport
-pub async fn run_pgwire<E, F>(
+pub async fn run_pgwire<E>(
     config: ReplicationConfig,
-    journal_path: impl AsRef<Path>,
-    checkpoint_path: impl AsRef<Path>,
-    apply: &mut F,
-) -> Result<LiveRunSummary, LiveReplicationError<E>>
-where
-    F: FnMut(&TransactionBatch) -> Result<(), E>,
-{
+    journal_path: &Path,
+    checkpoint_path: &Path,
+    apply: &mut dyn FnMut(&TransactionBatch) -> Result<(), E>,
+) -> Result<LiveRunSummary, LiveReplicationError<E>> {
     let mut driver = LiveReplicationDriver::open(journal_path, checkpoint_path, apply)?;
     let config = config.with_start_lsn(Lsn::from_u64(driver.resume_lsn().get()));
     let mut client = ReplicationClient::connect(config)
@@ -357,14 +342,11 @@ where
     Ok(driver.summary())
 }
 
-fn apply_checkpointed<E, F>(
+fn apply_checkpointed<E>(
     checkpoint: &mut AppliedCheckpoint,
     batch: &TransactionBatch,
-    apply: &mut F,
-) -> Result<(), CheckpointApplyError<E>>
-where
-    F: FnMut(&TransactionBatch) -> Result<(), E>,
-{
+    apply: &mut dyn FnMut(&TransactionBatch) -> Result<(), E>,
+) -> Result<(), CheckpointApplyError<E>> {
     let state = checkpoint.state();
     if batch.commit_lsn() < state.commit_lsn() {
         return Ok(());
