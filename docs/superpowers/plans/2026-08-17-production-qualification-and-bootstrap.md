@@ -102,4 +102,5 @@ Completion means the exact branch SHA has a fully green required matrix and the 
 
 - CDC replay state now advances only after the journal record is durably synced; the `/dev/full` regression is green on its exact SHA.
 - The current qualification slice adds allocation-free dense-bitmap iteration, bounded heap Top-K ranking, one-time query date conversion and allocation-free solver comparison keys.
+- The workspace has been normalized by the pinned Rust 1.97.1 formatter before strict Clippy and portable testing.
 - Exact-SHA portable CI and production coverage remain the acceptance authority; this section records intent and must not be treated as a completion claim.
