@@ -125,11 +125,19 @@ jobs:
           --ignore-filename-regex 'crates/veyra-server/src/main.rs'
           --lcov
           --output-path lcov.info
-      - name: Upload coverage report
+      - name: Generate LLVM JSON report
+        run: >
+          cargo +nightly llvm-cov report
+          --ignore-filename-regex 'crates/veyra-server/src/main.rs'
+          --json
+          --output-path coverage.json
+      - name: Upload coverage reports
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-lcov
-          path: lcov.info
+          name: coverage-reports
+          path: |
+            lcov.info
+            coverage.json
           if-no-files-found: error
       - name: Enforce production coverage
         run: >
