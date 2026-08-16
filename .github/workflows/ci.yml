@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -16,19 +16,33 @@ env:
 
 jobs:
   bootstrap-lockfile:
-    name: Bootstrap workspace lockfile
+    name: Bootstrap and validate workspace lockfile
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: agent/m0-foundation-ci
       - name: Install pinned stable Rust
-        run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal
+        run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal --component rustfmt --component clippy
       - name: Generate workspace lockfile from manifests
         run: cargo generate-lockfile
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: Test
+        run: cargo test --workspace --all-features --locked
       - name: Verify generated graph
         run: cargo metadata --locked --format-version 1 --no-deps
-      - name: Upload workspace lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: workspace-lockfile
-          path: Cargo.lock
-          if-no-files-found: error
+      - name: Commit generated lockfile when changed
+        shell: bash
+        run: |
+          if git diff --quiet -- Cargo.lock; then
+            echo "Cargo.lock already current"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock
+          git commit -m "build: refresh Cargo lockfile for CDC"
+          git push origin HEAD:agent/m0-foundation-ci
