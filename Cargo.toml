@@ -9,6 +9,8 @@ members = [
     "crates/veyra-rules",
     "crates/veyra-rule-compiler",
     "crates/veyra-occupancy",
+    "crates/veyra-restrictions",
+    "crates/veyra-pricing",
     "crates/veyra-runtime",
     "crates/veyra-server",
 ]
