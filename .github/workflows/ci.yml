@@ -81,13 +81,36 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
-      - name: Install pinned stable Rust with coverage tools
-        run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal --component llvm-tools-preview
+      - name: Install nightly coverage toolchain
+        run: rustup toolchain install nightly --profile minimal --component llvm-tools-preview
       - name: Install cargo-llvm-cov
         run: cargo install cargo-llvm-cov --locked
-      - name: Report and enforce coverage
+      - name: Exclude inline test harness from production denominator
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          crate_roots = list(Path("crates").glob("*/src/lib.rs"))
+          for root in crate_roots:
+              text = root.read_text()
+              marker = "#![feature(coverage_attribute)]\n"
+              if not text.startswith(marker):
+                  root.write_text(marker + text)
+
+          for path in Path("crates").glob("*/src/*.rs"):
+              text = path.read_text()
+              text = re.sub(
+                  r"(#\[cfg\(test\)\]\n)(?!#\[coverage\(off\)\]\n)",
+                  r"\1#[coverage(off)]\n",
+                  text,
+              )
+              path.write_text(text)
+          PY
+      - name: Report and enforce production coverage
         run: >
-          cargo llvm-cov
+          cargo +nightly llvm-cov
           --workspace
           --all-features
           --lib
@@ -98,7 +121,7 @@ jobs:
           --fail-under-functions 99
           --fail-under-regions 99
       - name: Generate LCOV report
-        run: cargo llvm-cov report --lcov --output-path lcov.info
+        run: cargo +nightly llvm-cov report --lcov --output-path lcov.info
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         with:
