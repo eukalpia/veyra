@@ -1101,6 +1101,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "veyra-party"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+]
+
+[[package]]
+name = "veyra-rules"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "veyra-party",
+]
+
+[[package]]
 name = "veyra-runtime"
 version = "0.1.0"
 dependencies = [

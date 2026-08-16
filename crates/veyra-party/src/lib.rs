@@ -20,18 +20,26 @@ const MAX_AGE: u16 = 130;
 pub struct TravelerId(u32);
 impl TravelerId {
     #[must_use]
-    pub const fn new(value: u32) -> Self { Self(value) }
+    pub const fn new(value: u32) -> Self {
+        Self(value)
+    }
     #[must_use]
-    pub const fn get(self) -> u32 { self.0 }
+    pub const fn get(self) -> u32 {
+        self.0
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct GroupId(u32);
 impl GroupId {
     #[must_use]
-    pub const fn new(value: u32) -> Self { Self(value) }
+    pub const fn new(value: u32) -> Self {
+        Self(value)
+    }
     #[must_use]
-    pub const fn get(self) -> u32 { self.0 }
+    pub const fn get(self) -> u32 {
+        self.0
+    }
 }
 
 /// Gregorian civil date used by semantic search. No timezone is involved in occupancy age.
@@ -55,11 +63,17 @@ impl CivilDate {
     }
 
     #[must_use]
-    pub const fn year(self) -> i32 { self.year }
+    pub const fn year(self) -> i32 {
+        self.year
+    }
     #[must_use]
-    pub const fn month(self) -> u8 { self.month }
+    pub const fn month(self) -> u8 {
+        self.month
+    }
     #[must_use]
-    pub const fn day(self) -> u8 { self.day }
+    pub const fn day(self) -> u8 {
+        self.day
+    }
 
     pub fn age_on(self, date: Self) -> Result<u16, PartyError> {
         if date < self {
@@ -118,14 +132,24 @@ pub struct Traveler {
 impl Traveler {
     #[must_use]
     pub const fn new(id: TravelerId, age: AgeEvidence, accessibility_required: bool) -> Self {
-        Self { id, age, accessibility_required }
+        Self {
+            id,
+            age,
+            accessibility_required,
+        }
     }
     #[must_use]
-    pub const fn id(&self) -> TravelerId { self.id }
+    pub const fn id(&self) -> TravelerId {
+        self.id
+    }
     #[must_use]
-    pub const fn age_evidence(&self) -> AgeEvidence { self.age }
+    pub const fn age_evidence(&self) -> AgeEvidence {
+        self.age
+    }
     #[must_use]
-    pub const fn accessibility_required(&self) -> bool { self.accessibility_required }
+    pub const fn accessibility_required(&self) -> bool {
+        self.accessibility_required
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -193,20 +217,34 @@ pub struct BookingParty {
 
 impl BookingParty {
     #[must_use]
-    pub fn builder() -> PartyBuilder { PartyBuilder::default() }
+    pub fn builder() -> PartyBuilder {
+        PartyBuilder::default()
+    }
 
     #[must_use]
-    pub fn traveler(&self, id: TravelerId) -> Option<&Traveler> { self.travelers.get(&id) }
+    pub fn traveler(&self, id: TravelerId) -> Option<&Traveler> {
+        self.travelers.get(&id)
+    }
     #[must_use]
-    pub fn travelers(&self) -> impl ExactSizeIterator<Item = &Traveler> { self.travelers.values() }
+    pub fn travelers(&self) -> impl ExactSizeIterator<Item = &Traveler> {
+        self.travelers.values()
+    }
     #[must_use]
-    pub fn relationships(&self) -> &BTreeSet<Relationship> { &self.relationships }
+    pub fn relationships(&self) -> &BTreeSet<Relationship> {
+        &self.relationships
+    }
     #[must_use]
-    pub fn guardians(&self) -> &BTreeSet<GuardianRelationship> { &self.guardians }
+    pub fn guardians(&self) -> &BTreeSet<GuardianRelationship> {
+        &self.guardians
+    }
     #[must_use]
-    pub fn rooming_intents(&self) -> &BTreeSet<RoomingIntent> { &self.rooming }
+    pub fn rooming_intents(&self) -> &BTreeSet<RoomingIntent> {
+        &self.rooming
+    }
     #[must_use]
-    pub fn group_members(&self, group: GroupId) -> Option<&BTreeSet<TravelerId>> { self.groups.get(&group) }
+    pub fn group_members(&self, group: GroupId) -> Option<&BTreeSet<TravelerId>> {
+        self.groups.get(&group)
+    }
 
     pub fn ages_at(&self, check_in: CivilDate) -> Result<Vec<(TravelerId, u16)>, PartyError> {
         self.travelers
@@ -237,16 +275,25 @@ impl PartyBuilder {
         Ok(self)
     }
 
-    pub fn add_relationship(&mut self, relationship: Relationship) -> Result<&mut Self, PartyError> {
+    pub fn add_relationship(
+        &mut self,
+        relationship: Relationship,
+    ) -> Result<&mut Self, PartyError> {
         self.validate_pair(relationship.from, relationship.to)?;
-        if self.relationships.len() >= MAX_RELATIONSHIPS && !self.relationships.contains(&relationship) {
+        if self.relationships.len() >= MAX_RELATIONSHIPS
+            && !self.relationships.contains(&relationship)
+        {
             return Err(PartyError::TooManyRelationships);
         }
         self.relationships.insert(relationship);
         Ok(self)
     }
 
-    pub fn add_group_member(&mut self, group: GroupId, traveler: TravelerId) -> Result<&mut Self, PartyError> {
+    pub fn add_group_member(
+        &mut self,
+        group: GroupId,
+        traveler: TravelerId,
+    ) -> Result<&mut Self, PartyError> {
         self.require_traveler(traveler)?;
         if !self.groups.contains_key(&group) && self.groups.len() >= MAX_GROUPS {
             return Err(PartyError::TooManyGroups);
@@ -262,9 +309,14 @@ impl PartyBuilder {
         Ok(self)
     }
 
-    pub fn add_guardian(&mut self, relationship: GuardianRelationship) -> Result<&mut Self, PartyError> {
+    pub fn add_guardian(
+        &mut self,
+        relationship: GuardianRelationship,
+    ) -> Result<&mut Self, PartyError> {
         self.validate_pair(relationship.guardian, relationship.dependent)?;
-        if self.guardians.len() >= MAX_GUARDIAN_RELATIONSHIPS && !self.guardians.contains(&relationship) {
+        if self.guardians.len() >= MAX_GUARDIAN_RELATIONSHIPS
+            && !self.guardians.contains(&relationship)
+        {
             return Err(PartyError::TooManyGuardianRelationships);
         }
         self.guardians.insert(relationship);
@@ -297,13 +349,21 @@ impl PartyBuilder {
     }
 
     fn require_traveler(&self, id: TravelerId) -> Result<(), PartyError> {
-        if self.travelers.contains_key(&id) { Ok(()) } else { Err(PartyError::UnknownTraveler(id)) }
+        if self.travelers.contains_key(&id) {
+            Ok(())
+        } else {
+            Err(PartyError::UnknownTraveler(id))
+        }
     }
 
     fn validate_pair(&self, left: TravelerId, right: TravelerId) -> Result<(), PartyError> {
         self.require_traveler(left)?;
         self.require_traveler(right)?;
-        if left == right { Err(PartyError::SelfEdge(left)) } else { Ok(()) }
+        if left == right {
+            Err(PartyError::SelfEdge(left))
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -313,7 +373,8 @@ fn contradictory_hard_intent(existing: &BTreeSet<RoomingIntent>, candidate: Room
     }
     existing.iter().any(|edge| {
         edge.strength == ConstraintStrength::Must
-            && canonical_pair(edge.left, edge.right) == canonical_pair(candidate.left, candidate.right)
+            && canonical_pair(edge.left, edge.right)
+                == canonical_pair(candidate.left, candidate.right)
             && matches!(
                 (edge.relation, candidate.relation),
                 (RoomingRelation::SameRoom, RoomingRelation::SeparateRoom)
@@ -323,7 +384,11 @@ fn contradictory_hard_intent(existing: &BTreeSet<RoomingIntent>, candidate: Room
 }
 
 fn canonical_pair(left: TravelerId, right: TravelerId) -> (TravelerId, TravelerId) {
-    if left <= right { (left, right) } else { (right, left) }
+    if left <= right {
+        (left, right)
+    } else {
+        (right, left)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -346,7 +411,9 @@ pub enum PartyError {
 }
 
 impl fmt::Display for PartyError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result { write!(formatter, "{self:?}") }
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{self:?}")
+    }
 }
 impl std::error::Error for PartyError {}
 
@@ -355,7 +422,9 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
 
-    fn date(y: i32, m: u8, d: u8) -> CivilDate { CivilDate::new(y, m, d).unwrap_or_else(|_| unreachable!()) }
+    fn date(y: i32, m: u8, d: u8) -> CivilDate {
+        CivilDate::new(y, m, d).unwrap_or_else(|_| unreachable!())
+    }
     fn traveler(id: u32, birth: CivilDate) -> Traveler {
         Traveler::new(TravelerId::new(id), AgeEvidence::BirthDate(birth), false)
     }
@@ -366,58 +435,170 @@ mod tests {
         assert_eq!(birth.age_on(date(2026, 9, 21)), Ok(15));
         assert_eq!(birth.age_on(date(2026, 9, 22)), Ok(16));
         assert_eq!(AgeEvidence::AgeAtCheckIn(5).age_at(date(2026, 1, 1)), Ok(5));
-        assert_eq!(AgeEvidence::AgeAtCheckIn(131).age_at(date(2026, 1, 1)), Err(PartyError::AgeOutOfRange));
+        assert_eq!(
+            AgeEvidence::AgeAtCheckIn(131).age_at(date(2026, 1, 1)),
+            Err(PartyError::AgeOutOfRange)
+        );
     }
 
     #[test]
     fn leap_year_and_date_validation_are_deterministic() {
         assert!(CivilDate::new(2024, 2, 29).is_ok());
-        assert_eq!(CivilDate::new(2023, 2, 29), Err(PartyError::InvalidDay { year: 2023, month: 2, day: 29 }));
-        assert_eq!(CivilDate::new(2026, 13, 1), Err(PartyError::InvalidMonth(13)));
-        assert_eq!(CivilDate::new(2026, 1, 0), Err(PartyError::InvalidDay { year: 2026, month: 1, day: 0 }));
-        assert_eq!(date(2026, 1, 2).age_on(date(2026, 1, 1)), Err(PartyError::CheckInBeforeBirth));
-        assert_eq!((date(2026, 3, 4).year(), date(2026, 3, 4).month(), date(2026, 3, 4).day()), (2026, 3, 4));
+        assert_eq!(
+            CivilDate::new(2023, 2, 29),
+            Err(PartyError::InvalidDay {
+                year: 2023,
+                month: 2,
+                day: 29
+            })
+        );
+        assert_eq!(
+            CivilDate::new(2026, 13, 1),
+            Err(PartyError::InvalidMonth(13))
+        );
+        assert_eq!(
+            CivilDate::new(2026, 1, 0),
+            Err(PartyError::InvalidDay {
+                year: 2026,
+                month: 1,
+                day: 0
+            })
+        );
+        assert_eq!(
+            date(2026, 1, 2).age_on(date(2026, 1, 1)),
+            Err(PartyError::CheckInBeforeBirth)
+        );
+        assert_eq!(
+            (
+                date(2026, 3, 4).year(),
+                date(2026, 3, 4).month(),
+                date(2026, 3, 4).day()
+            ),
+            (2026, 3, 4)
+        );
     }
 
     #[test]
     fn relationships_groups_guardians_and_rooming_are_independent() {
         let mut builder = BookingParty::builder();
-        builder.add_traveler(traveler(1, date(1988, 1, 1))).unwrap_or_else(|_| unreachable!());
-        builder.add_traveler(traveler(2, date(1991, 1, 1))).unwrap_or_else(|_| unreachable!());
-        builder.add_traveler(traveler(3, date(2016, 1, 1))).unwrap_or_else(|_| unreachable!());
-        builder.add_relationship(Relationship { from: TravelerId::new(1), to: TravelerId::new(2), kind: RelationshipKind::Spouse }).unwrap_or_else(|_| unreachable!());
-        builder.add_group_member(GroupId::new(7), TravelerId::new(1)).unwrap_or_else(|_| unreachable!());
-        builder.add_group_member(GroupId::new(7), TravelerId::new(3)).unwrap_or_else(|_| unreachable!());
-        builder.add_guardian(GuardianRelationship { guardian: TravelerId::new(1), dependent: TravelerId::new(3), valid_for_rooming: true }).unwrap_or_else(|_| unreachable!());
-        builder.add_rooming_intent(RoomingIntent { left: TravelerId::new(1), right: TravelerId::new(2), strength: ConstraintStrength::Prefer, relation: RoomingRelation::SameRoom }).unwrap_or_else(|_| unreachable!());
+        builder
+            .add_traveler(traveler(1, date(1988, 1, 1)))
+            .unwrap_or_else(|_| unreachable!());
+        builder
+            .add_traveler(traveler(2, date(1991, 1, 1)))
+            .unwrap_or_else(|_| unreachable!());
+        builder
+            .add_traveler(traveler(3, date(2016, 1, 1)))
+            .unwrap_or_else(|_| unreachable!());
+        builder
+            .add_relationship(Relationship {
+                from: TravelerId::new(1),
+                to: TravelerId::new(2),
+                kind: RelationshipKind::Spouse,
+            })
+            .unwrap_or_else(|_| unreachable!());
+        builder
+            .add_group_member(GroupId::new(7), TravelerId::new(1))
+            .unwrap_or_else(|_| unreachable!());
+        builder
+            .add_group_member(GroupId::new(7), TravelerId::new(3))
+            .unwrap_or_else(|_| unreachable!());
+        builder
+            .add_guardian(GuardianRelationship {
+                guardian: TravelerId::new(1),
+                dependent: TravelerId::new(3),
+                valid_for_rooming: true,
+            })
+            .unwrap_or_else(|_| unreachable!());
+        builder
+            .add_rooming_intent(RoomingIntent {
+                left: TravelerId::new(1),
+                right: TravelerId::new(2),
+                strength: ConstraintStrength::Prefer,
+                relation: RoomingRelation::SameRoom,
+            })
+            .unwrap_or_else(|_| unreachable!());
         let party = builder.build().unwrap_or_else(|_| unreachable!());
         assert_eq!(party.travelers().len(), 3);
         assert_eq!(party.relationships().len(), 1);
         assert_eq!(party.guardians().len(), 1);
         assert_eq!(party.rooming_intents().len(), 1);
-        assert_eq!(party.group_members(GroupId::new(7)).map(BTreeSet::len), Some(2));
+        assert_eq!(
+            party.group_members(GroupId::new(7)).map(BTreeSet::len),
+            Some(2)
+        );
         assert!(party.traveler(TravelerId::new(3)).is_some());
-        assert_eq!(party.ages_at(date(2026, 9, 21)).unwrap_or_else(|_| unreachable!()).len(), 3);
+        assert_eq!(
+            party
+                .ages_at(date(2026, 9, 21))
+                .unwrap_or_else(|_| unreachable!())
+                .len(),
+            3
+        );
     }
 
     #[test]
     fn hard_same_and_separate_room_cannot_both_exist() {
         let mut builder = BookingParty::builder();
-        builder.add_traveler(traveler(1, date(2000, 1, 1))).unwrap_or_else(|_| unreachable!());
-        builder.add_traveler(traveler(2, date(2000, 1, 1))).unwrap_or_else(|_| unreachable!());
-        builder.add_rooming_intent(RoomingIntent { left: TravelerId::new(1), right: TravelerId::new(2), strength: ConstraintStrength::Must, relation: RoomingRelation::SameRoom }).unwrap_or_else(|_| unreachable!());
-        assert_eq!(builder.add_rooming_intent(RoomingIntent { left: TravelerId::new(2), right: TravelerId::new(1), strength: ConstraintStrength::Must, relation: RoomingRelation::SeparateRoom }).err(), Some(PartyError::ContradictoryHardRoomingIntent));
+        builder
+            .add_traveler(traveler(1, date(2000, 1, 1)))
+            .unwrap_or_else(|_| unreachable!());
+        builder
+            .add_traveler(traveler(2, date(2000, 1, 1)))
+            .unwrap_or_else(|_| unreachable!());
+        builder
+            .add_rooming_intent(RoomingIntent {
+                left: TravelerId::new(1),
+                right: TravelerId::new(2),
+                strength: ConstraintStrength::Must,
+                relation: RoomingRelation::SameRoom,
+            })
+            .unwrap_or_else(|_| unreachable!());
+        assert_eq!(
+            builder
+                .add_rooming_intent(RoomingIntent {
+                    left: TravelerId::new(2),
+                    right: TravelerId::new(1),
+                    strength: ConstraintStrength::Must,
+                    relation: RoomingRelation::SeparateRoom
+                })
+                .err(),
+            Some(PartyError::ContradictoryHardRoomingIntent)
+        );
     }
 
     #[test]
     fn invalid_graph_edges_fail_closed() {
-        let mut builder = BookingParty::builder();
+        let builder = BookingParty::builder();
         assert_eq!(builder.build(), Err(PartyError::EmptyParty));
         let mut builder = BookingParty::builder();
-        builder.add_traveler(traveler(1, date(2000, 1, 1))).unwrap_or_else(|_| unreachable!());
-        assert_eq!(builder.add_traveler(traveler(1, date(2001, 1, 1))).err(), Some(PartyError::DuplicateTraveler));
-        assert_eq!(builder.add_relationship(Relationship { from: TravelerId::new(1), to: TravelerId::new(9), kind: RelationshipKind::Companion }).err(), Some(PartyError::UnknownTraveler(TravelerId::new(9))));
-        assert_eq!(builder.add_guardian(GuardianRelationship { guardian: TravelerId::new(1), dependent: TravelerId::new(1), valid_for_rooming: true }).err(), Some(PartyError::SelfEdge(TravelerId::new(1))));
+        builder
+            .add_traveler(traveler(1, date(2000, 1, 1)))
+            .unwrap_or_else(|_| unreachable!());
+        assert_eq!(
+            builder.add_traveler(traveler(1, date(2001, 1, 1))).err(),
+            Some(PartyError::DuplicateTraveler)
+        );
+        assert_eq!(
+            builder
+                .add_relationship(Relationship {
+                    from: TravelerId::new(1),
+                    to: TravelerId::new(9),
+                    kind: RelationshipKind::Companion
+                })
+                .err(),
+            Some(PartyError::UnknownTraveler(TravelerId::new(9)))
+        );
+        assert_eq!(
+            builder
+                .add_guardian(GuardianRelationship {
+                    guardian: TravelerId::new(1),
+                    dependent: TravelerId::new(1),
+                    valid_for_rooming: true
+                })
+                .err(),
+            Some(PartyError::SelfEdge(TravelerId::new(1)))
+        );
     }
 
     #[test]
