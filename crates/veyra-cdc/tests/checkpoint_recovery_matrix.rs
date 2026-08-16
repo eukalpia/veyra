@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use veyra_cdc::{
-    AppliedCheckpoint, CheckpointAdvance, CheckpointError, ChangeKind, RowChange, TransactionBatch,
+    AppliedCheckpoint, ChangeKind, CheckpointAdvance, CheckpointError, RowChange, TransactionBatch,
 };
 use veyra_types::LogSequenceNumber;
 
