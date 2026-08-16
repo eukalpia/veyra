@@ -110,7 +110,7 @@ pub fn solve(
         });
     }
 
-    context.valid.sort_by(solution_canonical_key);
+    context.valid.sort_by_key(solution_canonical_key);
     context.valid.dedup();
     let valid_solution_count = context.valid.len();
     if valid_solution_count > config.max_solutions {
