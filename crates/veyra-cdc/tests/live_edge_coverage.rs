@@ -136,10 +136,10 @@ fn checkpoint_recovery_skips_older_records_and_matches_the_target() {
         Ok(())
     };
 
-    assert_eq!(
+    assert!(matches!(
         recover_checkpointed(&mut processor, &mut checkpoint, &mut apply),
-        Ok(LogSequenceNumber::new(21))
-    );
+        Ok(lsn) if lsn == LogSequenceNumber::new(21)
+    ));
     assert_eq!(applied.get(), 0);
 
     let _ = fs::remove_file(journal_path);
@@ -224,7 +224,7 @@ fn raw_xlog_commit_acknowledges_only_after_apply_and_updates_all_progress() {
         Ok(())
     };
 
-    assert_eq!(
+    assert!(matches!(
         process_replication_event(
             &mut processor,
             &mut checkpoint,
@@ -233,9 +233,9 @@ fn raw_xlog_commit_acknowledges_only_after_apply_and_updates_all_progress() {
             &mut apply,
         ),
         Ok(LiveEventOutcome::Continue)
-    );
+    ));
     for data in [relation(11), insert(11, b"x")] {
-        assert_eq!(
+        assert!(matches!(
             process_replication_event(
                 &mut processor,
                 &mut checkpoint,
@@ -244,9 +244,9 @@ fn raw_xlog_commit_acknowledges_only_after_apply_and_updates_all_progress() {
                 &mut apply,
             ),
             Ok(LiveEventOutcome::Continue)
-        );
+        ));
     }
-    assert_eq!(
+    assert!(matches!(
         process_replication_event(
             &mut processor,
             &mut checkpoint,
@@ -254,15 +254,15 @@ fn raw_xlog_commit_acknowledges_only_after_apply_and_updates_all_progress() {
             xlog(20, 0, commit(20, 21)),
             &mut apply,
         ),
-        Ok(LiveEventOutcome::Acknowledge(LogSequenceNumber::new(21)))
-    );
+        Ok(LiveEventOutcome::Acknowledge(lsn)) if lsn == LogSequenceNumber::new(21)
+    ));
     assert_eq!(applied.get(), 1);
     assert!(!state.transaction_open());
     assert_eq!(state.progress().received_lsn, LogSequenceNumber::new(21));
     assert_eq!(state.progress().durable_lsn, LogSequenceNumber::new(21));
     assert_eq!(state.progress().applied_lsn, LogSequenceNumber::new(21));
 
-    assert_eq!(
+    assert!(matches!(
         process_replication_event(
             &mut processor,
             &mut checkpoint,
@@ -275,7 +275,7 @@ fn raw_xlog_commit_acknowledges_only_after_apply_and_updates_all_progress() {
             &mut apply,
         ),
         Ok(LiveEventOutcome::Continue)
-    );
+    ));
     assert_eq!(state.progress().received_lsn, LogSequenceNumber::new(21));
 
     let _ = fs::remove_file(journal_path);
