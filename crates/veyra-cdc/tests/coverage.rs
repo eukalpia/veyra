@@ -346,11 +346,15 @@ fn missing_parent_directories_return_typed_io_errors() {
     let journal_path = missing_root.join("journal.bin");
     let checkpoint_path = missing_root.join("checkpoint.bin");
 
-    let journal_error = Journal::open(&journal_path).unwrap_err();
+    let journal_error = Journal::open(&journal_path)
+        .err()
+        .unwrap_or_else(|| unreachable!());
     assert!(matches!(journal_error, JournalError::Io(_)));
     assert!(journal_error.source().is_some());
 
-    let checkpoint_error = AppliedCheckpoint::open(&checkpoint_path).unwrap_err();
+    let checkpoint_error = AppliedCheckpoint::open(&checkpoint_path)
+        .err()
+        .unwrap_or_else(|| unreachable!());
     assert!(matches!(checkpoint_error, CheckpointError::Io(_)));
     assert!(checkpoint_error.source().is_some());
 }
