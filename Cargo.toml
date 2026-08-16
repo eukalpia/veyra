@@ -3,6 +3,7 @@ members = [
     "crates/veyra-types",
     "crates/veyra-cdc",
     "crates/veyra-segment",
+    "crates/veyra-availability",
     "crates/veyra-runtime",
     "crates/veyra-server",
 ]
