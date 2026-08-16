@@ -61,9 +61,7 @@ fn write_journal(file_path: &Path, batches: &[TransactionBatch]) {
 
 fn write_checkpoint(file_path: &Path, batch: &TransactionBatch) {
     let mut checkpoint = AppliedCheckpoint::open(file_path).unwrap_or_else(|_| unreachable!());
-    checkpoint
-        .advance(batch)
-        .unwrap_or_else(|_| unreachable!());
+    checkpoint.advance(batch).unwrap_or_else(|_| unreachable!());
 }
 
 fn relation(relation_id: u32) -> Vec<u8> {
@@ -372,9 +370,7 @@ fn checkpoint_apply_and_live_errors_expose_stable_context() {
     let errors = [
         LiveReplicationError::<ApplyFailure>::Journal(JournalError::UnexpectedEof),
         LiveReplicationError::Checkpoint(CheckpointError::CorruptRecord),
-        LiveReplicationError::Processor(ProcessorError::Journal(
-            JournalError::UnexpectedEof,
-        )),
+        LiveReplicationError::Processor(ProcessorError::Journal(JournalError::UnexpectedEof)),
         LiveReplicationError::UnsupportedLogicalMessage("prefix".to_owned()),
         LiveReplicationError::StoppedMidTransaction(LogSequenceNumber::new(8)),
         LiveReplicationError::UnexpectedBoundaryOutcome,
