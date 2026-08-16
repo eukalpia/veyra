@@ -1,12 +1,11 @@
 #![forbid(unsafe_code)]
 
 use std::error::Error;
-use std::net::SocketAddr;
 
 use tokio::net::TcpListener;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
-use veyra_server::{bootstrap_runtime, serve};
+use veyra_server::{bootstrap_runtime, parse_bind_address, serve};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -15,9 +14,8 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .with_target(true)
         .try_init()?;
 
-    let bind = std::env::var("VEYRA_BIND").unwrap_or_else(|_| "127.0.0.1:8080".to_owned());
-    let address: SocketAddr = bind.parse()?;
-    let listener = TcpListener::bind(address).await?;
+    let bind = std::env::var("VEYRA_BIND").ok();
+    let listener = TcpListener::bind(parse_bind_address(bind.as_deref())?).await?;
     let local_address = listener.local_addr()?;
 
     info!(%local_address, "Veyra administrative server listening");
