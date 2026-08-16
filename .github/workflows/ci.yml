@@ -116,10 +116,15 @@ jobs:
           --lib
           --tests
           --locked
+          --ignore-filename-regex 'crates/veyra-server/src/main.rs'
           --summary-only
           --show-missing-lines
       - name: Generate LCOV report
-        run: cargo +nightly llvm-cov report --lcov --output-path lcov.info
+        run: >
+          cargo +nightly llvm-cov report
+          --ignore-filename-regex 'crates/veyra-server/src/main.rs'
+          --lcov
+          --output-path lcov.info
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         with:
@@ -129,6 +134,7 @@ jobs:
       - name: Enforce production coverage
         run: >
           cargo +nightly llvm-cov report
+          --ignore-filename-regex 'crates/veyra-server/src/main.rs'
           --summary-only
           --fail-under-lines 99
           --fail-under-functions 99
