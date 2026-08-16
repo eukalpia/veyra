@@ -2,12 +2,15 @@
 
 //! `PostgreSQL` logical replication primitives for Veyra.
 //!
-//! This crate owns transaction-boundary preservation, a strict subset-complete decoder for
-//! `PostgreSQL` `pgoutput` row-change messages, and crash-safe durable transaction replay state.
-//! It deliberately does not own booking mutations or query projections.
+//! This crate owns transaction-boundary preservation, strict `pgoutput` decoding,
+//! and crash-safe durable transaction replay state. It deliberately does not own
+//! booking mutations or query projections.
 
+#[path = "journal_v1.rs"]
 mod journal;
+#[path = "pgoutput_v1.rs"]
 mod pgoutput;
+#[path = "transaction_v1.rs"]
 mod transaction;
 
 pub use journal::{Journal, JournalError, ReplayDecision, ReplayGuard};
