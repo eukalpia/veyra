@@ -22,12 +22,7 @@ fn policy(minimum: u16, maximum: u16) -> CompiledRule {
     .unwrap_or_else(|_| unreachable!())
 }
 
-fn room(
-    id: u32,
-    floor: u16,
-    building: u16,
-    occupancy_rule: CompiledRule,
-) -> RoomOffer {
+fn room(id: u32, floor: u16, building: u16, occupancy_rule: CompiledRule) -> RoomOffer {
     RoomOffer {
         room_id: id,
         projected_price: MoneyMicros::try_nonnegative(i64::from(id) + 1)
@@ -91,10 +86,7 @@ fn hard_same_floor_and_same_building_constraints_are_proven() {
     let accepted = solve(
         &same_floor,
         date(),
-        &[
-            room(1, 4, 1, policy(1, 2)),
-            room(2, 4, 2, policy(1, 2)),
-        ],
+        &[room(1, 4, 1, policy(1, 2)), room(2, 4, 2, policy(1, 2))],
         SolverConfig::default(),
     )
     .unwrap_or_else(|_| unreachable!());
@@ -103,10 +95,7 @@ fn hard_same_floor_and_same_building_constraints_are_proven() {
     let rejected = solve(
         &same_floor,
         date(),
-        &[
-            room(1, 4, 1, policy(1, 2)),
-            room(2, 5, 1, policy(1, 2)),
-        ],
+        &[room(1, 4, 1, policy(1, 2)), room(2, 5, 1, policy(1, 2))],
         SolverConfig::default(),
     )
     .unwrap_or_else(|_| unreachable!());
@@ -122,10 +111,7 @@ fn hard_same_floor_and_same_building_constraints_are_proven() {
     let accepted = solve(
         &same_building,
         date(),
-        &[
-            room(1, 1, 7, policy(1, 2)),
-            room(2, 2, 7, policy(1, 2)),
-        ],
+        &[room(1, 1, 7, policy(1, 2)), room(2, 2, 7, policy(1, 2))],
         SolverConfig::default(),
     )
     .unwrap_or_else(|_| unreachable!());
@@ -134,10 +120,7 @@ fn hard_same_floor_and_same_building_constraints_are_proven() {
     let rejected = solve(
         &same_building,
         date(),
-        &[
-            room(1, 1, 7, policy(1, 2)),
-            room(2, 1, 8, policy(1, 2)),
-        ],
+        &[room(1, 1, 7, policy(1, 2)), room(2, 1, 8, policy(1, 2))],
         SolverConfig::default(),
     )
     .unwrap_or_else(|_| unreachable!());
@@ -157,10 +140,7 @@ fn every_supported_soft_relation_executes_prefer_and_avoid_semantics() {
             let result = solve(
                 &request,
                 date(),
-                &[
-                    room(1, 1, 1, policy(1, 2)),
-                    room(2, 2, 2, policy(1, 2)),
-                ],
+                &[room(1, 1, 1, policy(1, 2)), room(2, 2, 2, policy(1, 2))],
                 SolverConfig::default(),
             )
             .unwrap_or_else(|_| unreachable!());
@@ -182,10 +162,7 @@ fn every_unsupported_soft_topology_fails_closed() {
             solve(
                 &request,
                 date(),
-                &[
-                    room(1, 1, 1, policy(1, 2)),
-                    room(2, 2, 2, policy(1, 2)),
-                ],
+                &[room(1, 1, 1, policy(1, 2)), room(2, 2, 2, policy(1, 2)),],
                 SolverConfig::default(),
             ),
             Err(SolverError::UnsupportedPreference(relation))
