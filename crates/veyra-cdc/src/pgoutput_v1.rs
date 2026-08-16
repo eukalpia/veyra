@@ -203,10 +203,7 @@ fn decode_update(cursor: &mut Cursor<'_>) -> Result<RowChange, PgOutputError> {
     let relation_id = cursor.u32_be()?;
     let first = cursor.u8()?;
     let (old_tuple, next_tag) = match first {
-        b'K' | b'O' => (
-            Some(decode_tuple(cursor)?.encode_validated()),
-            cursor.u8()?,
-        ),
+        b'K' | b'O' => (Some(decode_tuple(cursor)?.encode_validated()), cursor.u8()?),
         b'N' => (None, b'N'),
         other => return Err(PgOutputError::InvalidTupleTag(other)),
     };
@@ -300,16 +297,12 @@ impl<'a> Cursor<'a> {
 
     fn u32_be(&mut self) -> Result<u32, PgOutputError> {
         let bytes = self.take(4)?;
-        Ok(u32::from_be_bytes([
-            bytes[0], bytes[1], bytes[2], bytes[3],
-        ]))
+        Ok(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
     }
 
     fn i32_be(&mut self) -> Result<i32, PgOutputError> {
         let bytes = self.take(4)?;
-        Ok(i32::from_be_bytes([
-            bytes[0], bytes[1], bytes[2], bytes[3],
-        ]))
+        Ok(i32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
     }
 
     fn u64_be(&mut self) -> Result<u64, PgOutputError> {
