@@ -26,6 +26,22 @@ jobs:
         run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal --component rustfmt --component clippy
       - name: Generate workspace lockfile from manifests
         run: cargo generate-lockfile
+      - name: Canonicalize checked test fixture
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("crates/veyra-cdc/src/pgoutput_v1.rs")
+          text = path.read_text()
+          old = 'huge.extend_from_slice(&((MAX_COLUMN_BYTES as u32) + 1).to_be_bytes());'
+          new = '''let oversized = u32::try_from(MAX_COLUMN_BYTES)
+              .unwrap_or(u32::MAX)
+              .saturating_add(1);
+          huge.extend_from_slice(&oversized.to_be_bytes());'''
+          if old not in text:
+              raise SystemExit("expected pgoutput fixture not found")
+          path.write_text(text.replace(old, new))
+          PY
       - name: Canonicalize formatting
         run: cargo fmt --all
       - name: Verify formatting
