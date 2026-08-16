@@ -96,14 +96,6 @@ index f132fd0..f3fb7b2 100644
          let word = self
              .words
              .get_mut(index)
-@@ -144,7 +167,6 @@ impl AvailabilityIndex {
-         }
-         Ok(DenseRoomSet {
-             words: result,
--            room_count: self.room_count,
-         })
-     }
- 
 @@ -185,12 +207,9 @@ impl AvailabilityIndex {
      }
  
