@@ -20,10 +20,7 @@ fn dense_bitmap_cross_word_transitions_are_exact() {
     assert_eq!(two_nights.len(), 6);
     assert!(!two_nights.contains(65));
     assert!(!two_nights.contains(130));
-    assert_eq!(
-        two_nights.room_ids(),
-        vec![0, 63, 64, 127, 128, 129]
-    );
+    assert_eq!(two_nights.room_ids(), vec![0, 63, 64, 127, 128, 129]);
     assert_eq!(
         index
             .reference_available_for_stay(100, 102)
