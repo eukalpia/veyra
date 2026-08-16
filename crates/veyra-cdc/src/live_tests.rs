@@ -108,8 +108,8 @@ fn cleanup(journal: &Path, checkpoint: &Path) {
 }
 
 #[test]
-fn ack_requires_journal_apply_and_checkpoint_durability()
--> Result<(), Box<dyn std::error::Error>> {
+fn ack_requires_journal_apply_and_checkpoint_durability() -> Result<(), Box<dyn std::error::Error>>
+{
     let (journal_path, checkpoint_path) = paths("ack");
     let mut processor = DurableTransactionProcessor::open(&journal_path)?;
     let mut checkpoint = AppliedCheckpoint::open(&checkpoint_path)?;
@@ -225,8 +225,8 @@ fn malformed_raw_payload_yields_no_ack_or_checkpoint() -> Result<(), Box<dyn std
 }
 
 #[test]
-fn mid_transaction_stop_and_logical_message_fail_closed()
--> Result<(), Box<dyn std::error::Error>> {
+fn mid_transaction_stop_and_logical_message_fail_closed() -> Result<(), Box<dyn std::error::Error>>
+{
     let (journal_path, checkpoint_path) = paths("closed");
     let mut processor = DurableTransactionProcessor::open(&journal_path)?;
     let mut checkpoint = AppliedCheckpoint::open(&checkpoint_path)?;
