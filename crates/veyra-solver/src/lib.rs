@@ -86,7 +86,7 @@ pub fn solve(
 ) -> Result<SolverResult, SolverError> {
     let travelers = party
         .travelers()
-        .map(|traveler| traveler.id())
+        .map(veyra_party::Traveler::id)
         .collect::<Vec<_>>();
     validate_input(party, &travelers, offers, config)?;
 
