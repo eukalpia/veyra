@@ -195,8 +195,8 @@ pub async fn run_pgwire<E, F>(
 where
     F: FnMut(&TransactionBatch) -> Result<(), E>,
 {
-    let mut processor = DurableTransactionProcessor::open(journal_path)
-        .map_err(LiveReplicationError::Journal)?;
+    let mut processor =
+        DurableTransactionProcessor::open(journal_path).map_err(LiveReplicationError::Journal)?;
     let resume_lsn = processor
         .recover(apply)
         .map_err(LiveReplicationError::Processor)?;
@@ -255,7 +255,10 @@ where
             Self::Processor(error) => write!(formatter, "processor: {error}"),
             Self::Transport(error) => write!(formatter, "transport: {error}"),
             Self::UnsupportedLogicalMessage(prefix) => {
-                write!(formatter, "unsupported logical replication message {prefix:?}")
+                write!(
+                    formatter,
+                    "unsupported logical replication message {prefix:?}"
+                )
             }
             Self::StoppedMidTransaction(lsn) => {
                 write!(formatter, "replication stopped mid-transaction at {lsn:?}")
@@ -267,11 +270,7 @@ where
     }
 }
 
-impl<E> std::error::Error for LiveReplicationError<E>
-where
-    E: std::error::Error + 'static,
-{
-}
+impl<E> std::error::Error for LiveReplicationError<E> where E: std::error::Error + 'static {}
 
 #[cfg(test)]
 mod tests {
@@ -316,18 +315,14 @@ mod tests {
         bytes.push(b'N');
         bytes.extend_from_slice(&1_u16.to_be_bytes());
         bytes.push(b't');
-        bytes.extend_from_slice(
-            &u32::try_from(value.len())
-                .unwrap_or_default()
-                .to_be_bytes(),
-        );
+        bytes.extend_from_slice(&u32::try_from(value.len()).unwrap_or_default().to_be_bytes());
         bytes.extend_from_slice(value);
         bytes
     }
 
     #[test]
-    fn structured_pgwire_events_ack_only_after_durable_apply(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn structured_pgwire_events_ack_only_after_durable_apply()
+    -> Result<(), Box<dyn std::error::Error>> {
         let journal = path("ack");
         let mut processor = DurableTransactionProcessor::open(&journal)?;
         let mut state = LiveReplicationState::default();
@@ -418,8 +413,8 @@ mod tests {
     }
 
     #[test]
-    fn adapter_fails_closed_for_mid_transaction_stop_and_logical_message(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn adapter_fails_closed_for_mid_transaction_stop_and_logical_message()
+    -> Result<(), Box<dyn std::error::Error>> {
         let journal = path("closed");
         let mut processor = DurableTransactionProcessor::open(&journal)?;
         let mut state = LiveReplicationState::default();
@@ -464,8 +459,8 @@ mod tests {
     }
 
     #[test]
-    fn malformed_raw_payload_yields_no_ack_and_poisoned_processor(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn malformed_raw_payload_yields_no_ack_and_poisoned_processor()
+    -> Result<(), Box<dyn std::error::Error>> {
         let journal = path("decode");
         let mut processor = DurableTransactionProcessor::open(&journal)?;
         let mut state = LiveReplicationState::default();

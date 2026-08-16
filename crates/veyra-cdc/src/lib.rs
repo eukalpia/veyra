@@ -18,8 +18,8 @@ mod transaction;
 
 pub use journal::{Journal, JournalError, ReplayDecision, ReplayGuard};
 pub use live::{
-    process_replication_event, run_pgwire, CdcProgress, LiveEventOutcome, LiveReplicationError,
-    LiveReplicationState, LiveRunSummary,
+    CdcProgress, LiveEventOutcome, LiveReplicationError, LiveReplicationState, LiveRunSummary,
+    process_replication_event, run_pgwire,
 };
 pub use pgoutput::{
     ColumnMetadata, PgOutputDecoder, PgOutputError, PgOutputMessage, RelationMetadata,
