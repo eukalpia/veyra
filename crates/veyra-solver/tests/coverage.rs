@@ -29,8 +29,10 @@ fn party_with_intent(strength: ConstraintStrength, relation: RoomingRelation) ->
 }
 fn room(id: u32, price: i64) -> RoomOffer {
     RoomOffer {
-        room_id: id, projected_price: MoneyMicros::try_nonnegative(price).unwrap_or_else(|_| unreachable!()),
-        floor: id as u16, building: 1, adult_age: 18, occupancy_rule: policy(4),
+        room_id: id,
+        projected_price: MoneyMicros::try_nonnegative(price).unwrap_or_else(|_| unreachable!()),
+        floor: u16::try_from(id).unwrap_or(u16::MAX), building: 1, adult_age: 18,
+        occupancy_rule: policy(4),
     }
 }
 
@@ -41,7 +43,6 @@ fn input_bounds_fail_closed() {
     let rooms = (0..=u32::try_from(HARD_MAX_ROOMS).unwrap_or_default()).map(|id| room(id, 1)).collect::<Vec<_>>();
     assert!(matches!(solve(&p, date(), &rooms, SolverConfig::default()), Err(SolverError::InvalidRoomCount(_))));
     assert_eq!(solve(&p, date(), &[room(1, 1)], SolverConfig { max_states: 0, max_solutions: 1 }), Err(SolverError::InvalidBudget));
-
     let mut bad_age = room(1, 1); bad_age.adult_age = 0;
     assert_eq!(solve(&p, date(), &[bad_age], SolverConfig::default()), Err(SolverError::InvalidAdultAge(1)));
     let mut negative = room(1, 1); negative.projected_price = MoneyMicros::signed(-1);
@@ -52,31 +53,16 @@ fn input_bounds_fail_closed() {
 
 #[test]
 fn search_budget_solution_limit_and_semantic_unknowns_fail_closed() {
-    assert_eq!(
-        solve(&party(3), date(), &[room(1, 1), room(2, 1)], SolverConfig { max_states: 1, max_solutions: 10 }),
-        Err(SolverError::StateBudgetExhausted)
-    );
-    assert!(matches!(
-        solve(&party(1), date(), &[room(1, 1), room(2, 1)], SolverConfig { max_states: 100, max_solutions: 1 }),
-        Err(SolverError::TooManyValidSolutions(_))
-    ));
-    assert_eq!(
-        solve(&party_with_intent(ConstraintStrength::Must, RoomingRelation::Near), date(), &[room(1, 1)], SolverConfig::default()),
-        Err(SolverError::UnsupportedHardConstraint(RoomingRelation::Near))
-    );
-    assert_eq!(
-        solve(&party_with_intent(ConstraintStrength::Prefer, RoomingRelation::Near), date(), &[room(1, 1), room(2, 1)], SolverConfig::default()),
-        Err(SolverError::UnsupportedPreference(RoomingRelation::Near))
-    );
+    assert_eq!(solve(&party(3), date(), &[room(1, 1), room(2, 1)], SolverConfig { max_states: 1, max_solutions: 10 }), Err(SolverError::StateBudgetExhausted));
+    assert!(matches!(solve(&party(1), date(), &[room(1, 1), room(2, 1)], SolverConfig { max_states: 100, max_solutions: 1 }), Err(SolverError::TooManyValidSolutions(_))));
+    assert_eq!(solve(&party_with_intent(ConstraintStrength::Must, RoomingRelation::Near), date(), &[room(1, 1)], SolverConfig::default()), Err(SolverError::UnsupportedHardConstraint(RoomingRelation::Near)));
+    assert_eq!(solve(&party_with_intent(ConstraintStrength::Prefer, RoomingRelation::Near), date(), &[room(1, 1), room(2, 1)], SolverConfig::default()), Err(SolverError::UnsupportedPreference(RoomingRelation::Near)));
 }
 
 #[test]
 fn checked_money_overflow_propagates_from_solution_cost() {
     let p = party_with_intent(ConstraintStrength::Must, RoomingRelation::SeparateRoom);
-    assert_eq!(
-        solve(&p, date(), &[room(1, i64::MAX), room(2, i64::MAX)], SolverConfig::default()),
-        Err(SolverError::Price(PricingError::Overflow))
-    );
+    assert_eq!(solve(&p, date(), &[room(1, i64::MAX), room(2, i64::MAX)], SolverConfig::default()), Err(SolverError::Price(PricingError::Overflow)));
 }
 
 #[test]
