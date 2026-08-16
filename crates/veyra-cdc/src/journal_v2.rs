@@ -33,16 +33,26 @@ impl ReplayGuard {
     }
 
     pub fn observe(&mut self, batch: &TransactionBatch) -> Result<ReplayDecision, JournalError> {
+        let decision = self.classify(batch)?;
+        if decision == ReplayDecision::Apply {
+            self.record(batch);
+        }
+        Ok(decision)
+    }
+
+    fn classify(&self, batch: &TransactionBatch) -> Result<ReplayDecision, JournalError> {
         let lsn = batch.commit_lsn();
         let fingerprint = batch.fingerprint();
         match self.fingerprints.get(&lsn) {
             Some(existing) if *existing == fingerprint => Ok(ReplayDecision::Duplicate),
             Some(_) => Err(JournalError::ConflictingReplay(lsn)),
-            None => {
-                self.fingerprints.insert(lsn, fingerprint);
-                Ok(ReplayDecision::Apply)
-            }
+            None => Ok(ReplayDecision::Apply),
         }
+    }
+
+    fn record(&mut self, batch: &TransactionBatch) {
+        self.fingerprints
+            .insert(batch.commit_lsn(), batch.fingerprint());
     }
 
     #[must_use]
@@ -89,7 +99,7 @@ impl Journal {
 
     /// Appends a complete transaction and calls `sync_data` before reporting success.
     pub fn append(&mut self, batch: &TransactionBatch) -> Result<ReplayDecision, JournalError> {
-        let decision = self.guard.observe(batch)?;
+        let decision = self.guard.classify(batch)?;
         if decision == ReplayDecision::Duplicate {
             return Ok(decision);
         }
@@ -108,6 +118,7 @@ impl Journal {
         self.file.write_all(&payload)?;
         self.file.write_all(&crc32c(&payload).to_le_bytes())?;
         self.file.sync_data()?;
+        self.guard.record(batch);
         Ok(decision)
     }
 
