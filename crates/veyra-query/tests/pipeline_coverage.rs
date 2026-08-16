@@ -22,11 +22,8 @@ fn date(year: i32, month: u8, day: u8) -> CivilDate {
 }
 
 fn policy() -> CompiledRule {
-    compile_rule(
-        RULE_SCHEMA_V1,
-        &Rule::Capacity { min: 1, max: 4 },
-    )
-    .unwrap_or_else(|_| unreachable!())
+    compile_rule(RULE_SCHEMA_V1, &Rule::Capacity { min: 1, max: 4 })
+        .unwrap_or_else(|_| unreachable!())
 }
 
 fn restrictions(extra: &[RestrictionRule]) -> CompiledRestrictions {
@@ -81,10 +78,7 @@ fn future_birth_party() -> BookingParty {
     builder.build().unwrap_or_else(|_| unreachable!())
 }
 
-fn document(
-    destination_id: u32,
-    restrictions: CompiledRestrictions,
-) -> RoomDocument {
+fn document(destination_id: u32, restrictions: CompiledRestrictions) -> RoomDocument {
     RoomDocument {
         room_id: 0,
         property_id: 100,
@@ -208,6 +202,8 @@ fn availability_failures_propagate_without_silently_hiding_results() {
     request.check_out_day = 11;
     assert_eq!(
         engine(document(7, restrictions(&[]))).search(&request),
-        Err(QueryError::Availability(AvailabilityError::DayOutOfRange(9)))
+        Err(QueryError::Availability(AvailabilityError::DayOutOfRange(
+            9
+        )))
     );
 }
