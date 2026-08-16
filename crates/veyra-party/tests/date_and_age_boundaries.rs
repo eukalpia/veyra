@@ -7,7 +7,10 @@ fn date(year: i32, month: u8, day: u8) -> CivilDate {
 #[test]
 fn civil_date_rejects_both_month_and_day_boundaries() {
     assert_eq!(CivilDate::new(2026, 0, 1), Err(PartyError::InvalidMonth(0)));
-    assert_eq!(CivilDate::new(2026, 13, 1), Err(PartyError::InvalidMonth(13)));
+    assert_eq!(
+        CivilDate::new(2026, 13, 1),
+        Err(PartyError::InvalidMonth(13))
+    );
     assert_eq!(
         CivilDate::new(2026, 1, 0),
         Err(PartyError::InvalidDay {
@@ -39,7 +42,10 @@ fn civil_date_rejects_both_month_and_day_boundaries() {
 #[test]
 fn age_is_checked_before_birthday_on_birthday_and_after_birthday() {
     let birth = date(2000, 9, 21);
-    assert_eq!(birth.age_on(date(1999, 9, 21)), Err(PartyError::CheckInBeforeBirth));
+    assert_eq!(
+        birth.age_on(date(1999, 9, 21)),
+        Err(PartyError::CheckInBeforeBirth)
+    );
     assert_eq!(birth.age_on(date(2026, 9, 20)), Ok(25));
     assert_eq!(birth.age_on(date(2026, 9, 21)), Ok(26));
     assert_eq!(birth.age_on(date(2026, 9, 22)), Ok(26));
