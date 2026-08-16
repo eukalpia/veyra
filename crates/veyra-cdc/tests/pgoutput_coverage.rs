@@ -7,7 +7,11 @@ const MAX_COLUMN_BYTES: usize = 8 * 1024 * 1024;
 
 fn tuple(columns: &[(u8, &[u8])]) -> Vec<u8> {
     let mut out = Vec::new();
-    out.extend_from_slice(&u16::try_from(columns.len()).unwrap_or_default().to_be_bytes());
+    out.extend_from_slice(
+        &u16::try_from(columns.len())
+            .unwrap_or_default()
+            .to_be_bytes(),
+    );
     for (kind, bytes) in columns {
         out.push(*kind);
         if matches!(*kind, b't' | b'b') {
@@ -151,9 +155,9 @@ fn row_change_decoding_covers_insert_update_and_delete_shapes() {
     assert!(matches!(
         inserted,
         PgOutputMessage::Change(change)
-            if change.kind() == ChangeKind::Insert
-                && change.old_tuple().is_none()
-                && change.new_tuple().is_some()
+            if change.kind == ChangeKind::Insert
+                && change.old_tuple.is_none()
+                && change.new_tuple.is_some()
     ));
 
     for old_tag in [b'K', b'O'] {
@@ -167,22 +171,17 @@ fn row_change_decoding_covers_insert_update_and_delete_shapes() {
         assert!(matches!(
             decoded,
             PgOutputMessage::Change(change)
-                if change.kind() == ChangeKind::Update
-                    && change.old_tuple().is_some()
-                    && change.new_tuple().is_some()
+                if change.kind == ChangeKind::Update
+                    && change.old_tuple.is_some()
+                    && change.new_tuple.is_some()
         ));
     }
-    let decoded = PgOutputDecoder::decode(&update(
-        b'N',
-        None,
-        None,
-        &tuple(&[(b't', b"new")]),
-    ))
-    .unwrap_or_else(|_| unreachable!());
+    let decoded = PgOutputDecoder::decode(&update(b'N', None, None, &tuple(&[(b't', b"new")])))
+        .unwrap_or_else(|_| unreachable!());
     assert!(matches!(
         decoded,
         PgOutputMessage::Change(change)
-            if change.kind() == ChangeKind::Update && change.old_tuple().is_none()
+            if change.kind == ChangeKind::Update && change.old_tuple.is_none()
     ));
 
     for old_tag in [b'K', b'O'] {
@@ -191,9 +190,9 @@ fn row_change_decoding_covers_insert_update_and_delete_shapes() {
         assert!(matches!(
             decoded,
             PgOutputMessage::Change(change)
-                if change.kind() == ChangeKind::Delete
-                    && change.old_tuple().is_some()
-                    && change.new_tuple().is_none()
+                if change.kind == ChangeKind::Delete
+                    && change.old_tuple.is_some()
+                    && change.new_tuple.is_none()
         ));
     }
 
@@ -202,12 +201,7 @@ fn row_change_decoding_covers_insert_update_and_delete_shapes() {
         Err(PgOutputError::InvalidTupleTag(b'X'))
     );
     assert_eq!(
-        PgOutputDecoder::decode(&update(
-            b'K',
-            Some(&tuple(&[])),
-            Some(b'X'),
-            &[]
-        )),
+        PgOutputDecoder::decode(&update(b'K', Some(&tuple(&[])), Some(b'X'), &[])),
         Err(PgOutputError::InvalidTupleTag(b'X'))
     );
     assert_eq!(
@@ -242,7 +236,10 @@ fn truncate_and_message_boundaries_fail_closed() {
             ))
         );
     }
-    assert_eq!(PgOutputDecoder::decode(&[]), Err(PgOutputError::UnexpectedEof));
+    assert_eq!(
+        PgOutputDecoder::decode(&[]),
+        Err(PgOutputError::UnexpectedEof)
+    );
     assert_eq!(
         PgOutputDecoder::decode(&[0xff]),
         Err(PgOutputError::UnsupportedMessage(0xff))
@@ -288,19 +285,20 @@ fn malformed_strings_tuples_and_lengths_are_rejected() {
         Err(PgOutputError::TooManyColumns(1_025))
     );
 
-    let mut invalid_kind = insert_with_tuple(&tuple(&[(b'x', b"")]));
+    let invalid_kind = insert_with_tuple(&tuple(&[(b'x', b"")]));
     assert_eq!(
         PgOutputDecoder::decode(&invalid_kind),
         Err(PgOutputError::InvalidTupleColumnKind(b'x'))
     );
-    invalid_kind.clear();
 
     let mut oversized = vec![b'I'];
     oversized.extend_from_slice(&7_u32.to_be_bytes());
     oversized.push(b'N');
     oversized.extend_from_slice(&1_u16.to_be_bytes());
     oversized.push(b't');
-    oversized.extend_from_slice(&(u32::try_from(MAX_COLUMN_BYTES).unwrap_or_default() + 1).to_be_bytes());
+    oversized.extend_from_slice(
+        &(u32::try_from(MAX_COLUMN_BYTES).unwrap_or_default() + 1).to_be_bytes(),
+    );
     assert_eq!(
         PgOutputDecoder::decode(&oversized),
         Err(PgOutputError::ColumnTooLarge(MAX_COLUMN_BYTES + 1))
