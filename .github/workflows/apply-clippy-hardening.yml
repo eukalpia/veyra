@@ -1,0 +1,51 @@
+name: Apply Clippy hardening
+
+on:
+  push:
+    branches:
+      - agent/m0-foundation-ci
+    paths:
+      - .github/clippy-hardening/READY
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-clippy-hardening-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  harden:
+    name: Apply proven conversions and verify Clippy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/m0-foundation-ci
+          fetch-depth: 0
+      - name: Install pinned toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Apply minimal conversion fix and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("crates/veyra-party/src/lib.rs")
+          text = path.read_text()
+          old = "        Ok(years as u16)\n"
+          new = "        u16::try_from(years).map_err(|_| PartyError::AgeOutOfRange)\n"
+          if text.count(old) != 1:
+              raise SystemExit("expected exactly one age conversion site")
+          path.write_text(text.replace(old, new))
+          PY
+          cargo fmt --all
+          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+          git rm .github/clippy-hardening/READY
+          git rm .github/workflows/apply-clippy-hardening.yml
+          git config user.name "Veyra CI"
+          git config user.email "120781817+eukalpia@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: preserve checked semantic conversions"
+          git push origin HEAD:agent/m0-foundation-ci
