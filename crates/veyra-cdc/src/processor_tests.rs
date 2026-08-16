@@ -248,6 +248,53 @@ fn consume_message_supports_structured_replication_transports()
 }
 
 #[test]
+fn stream_failure_poisoning_prevents_later_messages() -> Result<(), Box<dyn std::error::Error>> {
+    let journal_path = path("stream-failure");
+    let mut processor = DurableTransactionProcessor::open(&journal_path)?;
+    let mut apply = |_batch: &TransactionBatch| -> Result<(), ApplyFailure> { Ok(()) };
+    let commit_without_begin = PgOutputMessage::Commit {
+        flags: 0,
+        commit_lsn: LogSequenceNumber::new(10),
+        end_lsn: LogSequenceNumber::new(11),
+        commit_timestamp_micros: 0,
+    };
+    assert!(matches!(
+        processor.consume_message(commit_without_begin, &mut apply),
+        Err(ProcessorError::Stream(_))
+    ));
+    assert!(processor.is_poisoned());
+    assert!(matches!(
+        processor.consume_message(
+            PgOutputMessage::Relation(RelationMetadata {
+                relation_id: 1,
+                namespace: "public".to_owned(),
+                name: "rooms".to_owned(),
+                replica_identity: crate::ReplicaIdentity::Default,
+                columns: Vec::new(),
+            }),
+            &mut apply,
+        ),
+        Err(ProcessorError::Poisoned)
+    ));
+    let _ = fs::remove_file(journal_path);
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn journal_write_failure_poisoning_prevents_acknowledgement()
+-> Result<(), Box<dyn std::error::Error>> {
+    let mut processor = DurableTransactionProcessor::open(std::path::Path::new("/dev/full"))?;
+    let mut apply = |_batch: &TransactionBatch| -> Result<(), ApplyFailure> { Ok(()) };
+    assert!(matches!(
+        feed_transaction(&mut processor, &mut apply),
+        Err(ProcessorError::Journal(JournalError::Io(_)))
+    ));
+    assert!(processor.is_poisoned());
+    Ok(())
+}
+
+#[test]
 fn corrupt_durable_journal_prevents_processor_start() -> Result<(), Box<dyn std::error::Error>> {
     let journal_path = path("corrupt");
     let mut file = OpenOptions::new()
