@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/veyra-types",
+    "crates/veyra-cdc",
     "crates/veyra-runtime",
     "crates/veyra-server",
 ]

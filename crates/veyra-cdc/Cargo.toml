@@ -1,0 +1,18 @@
+[package]
+name = "veyra-cdc"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde.workspace = true
+veyra-types = { version = "0.1.0", path = "../veyra-types" }
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

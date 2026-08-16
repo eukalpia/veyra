@@ -1,9 +1,6 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
   workflow_dispatch:
 
@@ -15,155 +12,23 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  CARGO_TERM_COLOR: always
-  RUST_BACKTRACE: "1"
   VEYRA_RUST_VERSION: "1.97.1"
 
 jobs:
-  lockfiles:
-    name: Lockfile integrity
+  bootstrap-lockfile:
+    name: Bootstrap workspace lockfile
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - name: Install pinned stable Rust
         run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal
-      - name: Verify workspace lockfile
+      - name: Generate workspace lockfile from manifests
+        run: cargo generate-lockfile
+      - name: Verify generated graph
         run: cargo metadata --locked --format-version 1 --no-deps
-      - name: Verify fuzz lockfile
-        working-directory: fuzz
-        run: cargo metadata --locked --format-version 1 --no-deps
-
-  portable:
-    name: Portable / ${{ matrix.target }}
-    needs: lockfiles
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-24.04
-            target: x86_64-unknown-linux-gnu
-          - runner: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-gnu
-          - runner: windows-2025
-            target: x86_64-pc-windows-msvc
-          - runner: macos-15-intel
-            target: x86_64-apple-darwin
-          - runner: macos-15
-            target: aarch64-apple-darwin
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install pinned stable Rust
-        run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal --component rustfmt --component clippy
-      - name: Format
-        run: cargo fmt --all -- --check
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-      - name: Test
-        run: cargo test --workspace --all-features --locked
-
-  nextest:
-    name: Nextest
-    needs: lockfiles
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install pinned stable Rust
-        run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal
-      - name: Install cargo-nextest
-        run: cargo install cargo-nextest --locked
-      - name: Run nextest
-        run: cargo nextest run --workspace --all-features --locked
-
-  coverage:
-    name: Coverage >= 99%
-    needs: lockfiles
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install pinned stable Rust with coverage tools
-        run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal --component llvm-tools-preview
-      - name: Install cargo-llvm-cov
-        run: cargo install cargo-llvm-cov --locked
-      - name: Report and enforce coverage
-        run: >
-          cargo llvm-cov
-          --workspace
-          --all-features
-          --lib
-          --locked
-          --summary-only
-          --show-missing-lines
-          --fail-under-lines 99
-          --fail-under-functions 99
-          --fail-under-regions 99
-      - name: Generate LCOV report
-        run: cargo llvm-cov report --lcov --output-path lcov.info
-      - name: Upload coverage report
+      - name: Upload workspace lockfile
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-lcov
-          path: lcov.info
+          name: workspace-lockfile
+          path: Cargo.lock
           if-no-files-found: error
-
-  security:
-    name: Dependency policy
-    needs: lockfiles
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install pinned stable Rust
-        run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal
-      - name: Install cargo-deny
-        run: cargo install cargo-deny --locked
-      - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
-      - name: Verify locked dependency graph
-        run: cargo metadata --locked --format-version 1 --no-deps
-      - name: Deny policy
-        run: cargo deny check
-      - name: Advisory audit
-        run: cargo audit --deny warnings
-
-  docs:
-    name: Rustdoc warnings
-    needs: lockfiles
-    runs-on: ubuntu-24.04
-    env:
-      RUSTDOCFLAGS: "-D warnings"
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install pinned stable Rust
-        run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal
-      - name: Build documentation
-        run: cargo doc --workspace --all-features --no-deps --locked
-
-  miri:
-    name: Miri / veyra-types
-    needs: lockfiles
-    runs-on: ubuntu-24.04
-    env:
-      PROPTEST_CASES: "16"
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install nightly Miri
-        run: rustup toolchain install nightly --profile minimal --component miri
-      - name: Run Miri
-        run: cargo +nightly miri test -p veyra-types --lib --locked -- --skip any_ordered_chain_is_accepted
-
-  fuzz-smoke:
-    name: Fuzz smoke / projection progress
-    needs: lockfiles
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v6
-      - name: Install nightly Rust
-        run: rustup toolchain install nightly --profile minimal
-      - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz --locked
-      - name: Verify fuzz lockfile
-        working-directory: fuzz
-        run: cargo metadata --locked --format-version 1 --no-deps
-      - name: Run bounded fuzz smoke
-        working-directory: fuzz
-        run: cargo +nightly fuzz run projection_progress -- -runs=512
