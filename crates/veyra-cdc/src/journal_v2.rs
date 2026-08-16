@@ -107,7 +107,7 @@ impl Journal {
         if payload.len() > MAX_RECORD_BYTES {
             return Err(JournalError::RecordTooLarge(payload.len()));
         }
-        let payload_len = u64::try_from(payload.len()).map_err(|_| JournalError::LengthOverflow)?;
+        let payload_len = payload.len() as u64;
         let mut header = [0_u8; HEADER_LEN];
         header[0..4].copy_from_slice(&MAGIC);
         header[4..6].copy_from_slice(&VERSION.to_le_bytes());
@@ -159,16 +159,14 @@ fn scan(
 ) -> Result<(Vec<TransactionBatch>, Option<u64>), JournalError> {
     file.seek(SeekFrom::Start(0))?;
     let file_len = file.metadata()?.len();
-    let header_len = u64::try_from(HEADER_LEN).map_err(|_| JournalError::LengthOverflow)?;
+    let header_len = HEADER_LEN as u64;
     let mut records = Vec::new();
     let mut offset = 0_u64;
     loop {
         if offset == file_len {
             return Ok((records, None));
         }
-        let remaining = file_len
-            .checked_sub(offset)
-            .ok_or(JournalError::LengthOverflow)?;
+        let remaining = file_len - offset;
         if remaining < header_len {
             return tail(records, offset, allow_incomplete_tail);
         }
@@ -181,18 +179,14 @@ fn scan(
         if version != VERSION {
             return Err(JournalError::UnsupportedVersion(version));
         }
-        let payload_len = header_u64(&header[8..16])?;
-        let commit_lsn = header_u64(&header[16..24])?;
-        let fingerprint = header_u64(&header[24..32])?;
-        let payload_len_usize =
-            usize::try_from(payload_len).map_err(|_| JournalError::LengthOverflow)?;
-        if payload_len_usize > MAX_RECORD_BYTES {
-            return Err(JournalError::RecordTooLarge(payload_len_usize));
+        let payload_len = header_u64(&header[8..16]);
+        let commit_lsn = header_u64(&header[16..24]);
+        let fingerprint = header_u64(&header[24..32]);
+        if payload_len > MAX_RECORD_BYTES as u64 {
+            return Err(JournalError::RecordTooLarge(MAX_RECORD_BYTES + 1));
         }
-        let total = header_len
-            .checked_add(payload_len)
-            .and_then(|v| v.checked_add(CRC_LEN))
-            .ok_or(JournalError::LengthOverflow)?;
+        let payload_len_usize = payload_len as usize;
+        let total = header_len + payload_len + CRC_LEN;
         if remaining < total {
             return tail(records, offset, allow_incomplete_tail);
         }
@@ -208,9 +202,7 @@ fn scan(
             return Err(JournalError::HeaderPayloadMismatch(offset));
         }
         records.push(batch);
-        offset = offset
-            .checked_add(total)
-            .ok_or(JournalError::LengthOverflow)?;
+        offset += total;
     }
 }
 
@@ -226,10 +218,10 @@ fn tail(
     }
 }
 
-fn header_u64(bytes: &[u8]) -> Result<u64, JournalError> {
-    Ok(u64::from_le_bytes(
-        bytes.try_into().map_err(|_| JournalError::CorruptHeader)?,
-    ))
+fn header_u64(bytes: &[u8]) -> u64 {
+    u64::from_le_bytes([
+        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+    ])
 }
 
 fn encode_batch(batch: &TransactionBatch) -> Result<Vec<u8>, JournalError> {
@@ -237,7 +229,7 @@ fn encode_batch(batch: &TransactionBatch) -> Result<Vec<u8>, JournalError> {
     if count > MAX_CHANGES {
         return Err(JournalError::TooManyChanges(count));
     }
-    let count = u32::try_from(count).map_err(|_| JournalError::TooManyChanges(count))?;
+    let count = count as u32;
     let mut out = Vec::new();
     out.extend_from_slice(&batch.xid().to_le_bytes());
     out.extend_from_slice(&batch.final_lsn().get().to_le_bytes());
@@ -259,8 +251,7 @@ fn encode_optional(out: &mut Vec<u8>, tuple: Option<&[u8]>) -> Result<(), Journa
             if bytes.len() > MAX_RECORD_BYTES {
                 return Err(JournalError::TupleTooLarge(bytes.len()));
             }
-            let len =
-                u32::try_from(bytes.len()).map_err(|_| JournalError::TupleTooLarge(bytes.len()))?;
+            let len = bytes.len() as u32;
             out.push(1);
             out.extend_from_slice(&len.to_le_bytes());
             out.extend_from_slice(bytes);
@@ -276,7 +267,7 @@ fn decode_batch(bytes: &[u8]) -> Result<TransactionBatch, JournalError> {
     let final_lsn = LogSequenceNumber::new(cursor.u64()?);
     let commit_lsn = LogSequenceNumber::new(cursor.u64()?);
     let end_lsn = LogSequenceNumber::new(cursor.u64()?);
-    let count = usize::try_from(cursor.u32()?).map_err(|_| JournalError::LengthOverflow)?;
+    let count = cursor.u32()? as usize;
     if count > MAX_CHANGES {
         return Err(JournalError::TooManyChanges(count));
     }
@@ -326,24 +317,20 @@ impl<'a> Cursor<'a> {
         Ok(self.take(1)?[0])
     }
     fn u32(&mut self) -> Result<u32, JournalError> {
-        Ok(u32::from_le_bytes(
-            self.take(4)?
-                .try_into()
-                .map_err(|_| JournalError::UnexpectedEof)?,
-        ))
+        let bytes = self.take(4)?;
+        Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
     }
     fn u64(&mut self) -> Result<u64, JournalError> {
-        Ok(u64::from_le_bytes(
-            self.take(8)?
-                .try_into()
-                .map_err(|_| JournalError::UnexpectedEof)?,
-        ))
+        let bytes = self.take(8)?;
+        Ok(u64::from_le_bytes([
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+        ]))
     }
     fn optional_bytes(&mut self) -> Result<Option<Vec<u8>>, JournalError> {
         match self.u8()? {
             0 => Ok(None),
             1 => {
-                let len = usize::try_from(self.u32()?).map_err(|_| JournalError::LengthOverflow)?;
+                let len = self.u32()? as usize;
                 if len > MAX_RECORD_BYTES {
                     return Err(JournalError::TupleTooLarge(len));
                 }

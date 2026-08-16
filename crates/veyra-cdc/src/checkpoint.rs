@@ -105,7 +105,7 @@ impl AppliedCheckpoint {
         let mut reader = OpenOptions::new().read(true).write(true).open(&self.path)?;
         reader.seek(SeekFrom::Start(0))?;
         let file_len = reader.metadata()?.len();
-        let record_len = u64::try_from(RECORD_LEN).map_err(|_| CheckpointError::LengthOverflow)?;
+        let record_len = RECORD_LEN as u64;
         let complete_len = file_len - (file_len % record_len);
         if complete_len != file_len {
             reader.set_len(complete_len)?;
@@ -120,9 +120,7 @@ impl AppliedCheckpoint {
             let next = decode_record(&record, offset)?;
             validate_transition(state, next)?;
             state = next;
-            offset = offset
-                .checked_add(record_len)
-                .ok_or(CheckpointError::LengthOverflow)?;
+            offset += record_len;
         }
         self.state = state;
         Ok(())
@@ -162,27 +160,26 @@ fn decode_record(record: &[u8; RECORD_LEN], offset: u64) -> Result<AppliedState,
     if version != VERSION {
         return Err(CheckpointError::UnsupportedVersion(version));
     }
-    let expected = u32::from_le_bytes(
-        record[BODY_LEN..RECORD_LEN]
-            .try_into()
-            .map_err(|_| CheckpointError::CorruptRecord)?,
-    );
+    let expected = u32::from_le_bytes([
+        record[BODY_LEN],
+        record[BODY_LEN + 1],
+        record[BODY_LEN + 2],
+        record[BODY_LEN + 3],
+    ]);
     if crc32c(&record[..BODY_LEN]) != expected {
         return Err(CheckpointError::ChecksumMismatch(offset));
     }
     Ok(AppliedState {
-        commit_lsn: LogSequenceNumber::new(read_u64(&record[8..16])?),
-        end_lsn: LogSequenceNumber::new(read_u64(&record[16..24])?),
-        fingerprint: read_u64(&record[24..32])?,
+        commit_lsn: LogSequenceNumber::new(read_u64(&record[8..16])),
+        end_lsn: LogSequenceNumber::new(read_u64(&record[16..24])),
+        fingerprint: read_u64(&record[24..32]),
     })
 }
 
-fn read_u64(bytes: &[u8]) -> Result<u64, CheckpointError> {
-    Ok(u64::from_le_bytes(
-        bytes
-            .try_into()
-            .map_err(|_| CheckpointError::CorruptRecord)?,
-    ))
+fn read_u64(bytes: &[u8]) -> u64 {
+    u64::from_le_bytes([
+        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+    ])
 }
 
 fn crc32c(bytes: &[u8]) -> u32 {

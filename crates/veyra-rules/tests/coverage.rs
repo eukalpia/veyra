@@ -92,3 +92,65 @@ fn boolean_short_circuit_paths_are_deterministic() {
     ]);
     assert_eq!(all_false.evaluate(&context), Ok(false));
 }
+
+#[test]
+fn primitive_rules_not_and_complexity_bound_cover_both_outcomes() {
+    let supervised = OccupancyContext::new(vec![
+        occupant(1, 40, false),
+        occupant(2, 8, true),
+    ])
+    .unwrap_or_else(|_| unreachable!());
+    let unsupervised = OccupancyContext::new(vec![occupant(3, 8, false)])
+        .unwrap_or_else(|_| unreachable!());
+
+    assert_eq!(Rule::Capacity { min: 2, max: 2 }.evaluate(&supervised), Ok(true));
+    assert_eq!(Rule::Capacity { min: 3, max: 4 }.evaluate(&supervised), Ok(false));
+    assert_eq!(
+        Rule::AgeRangeCount {
+            min_age: 0,
+            max_age: 17,
+            min_count: 1,
+            max_count: 1,
+        }
+        .evaluate(&supervised),
+        Ok(true)
+    );
+    assert_eq!(
+        Rule::AgeRangeCount {
+            min_age: 0,
+            max_age: 17,
+            min_count: 2,
+            max_count: 2,
+        }
+        .evaluate(&supervised),
+        Ok(false)
+    );
+    assert_eq!(
+        Rule::RequireGuardianForMinors {
+            minor_below_age: 18,
+        }
+        .evaluate(&supervised),
+        Ok(true)
+    );
+    assert_eq!(
+        Rule::RequireGuardianForMinors {
+            minor_below_age: 18,
+        }
+        .evaluate(&unsupervised),
+        Ok(false)
+    );
+    assert_eq!(
+        Rule::Not(Box::new(Rule::Capacity { min: 3, max: 3 })).evaluate(&supervised),
+        Ok(true)
+    );
+    assert_eq!(
+        Rule::Not(Box::new(Rule::Capacity { min: 2, max: 2 })).evaluate(&supervised),
+        Ok(false)
+    );
+
+    let mut too_deep = Rule::Capacity { min: 1, max: 1 };
+    for _ in 0..256 {
+        too_deep = Rule::Not(Box::new(too_deep));
+    }
+    assert_eq!(too_deep.validate(), Err(RuleError::RuleTooComplex));
+}

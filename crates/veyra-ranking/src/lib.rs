@@ -6,8 +6,9 @@
 //! tie-breaking. `BestForFamily` uses a lexicographic family-penalty dimension, so monetary scale
 //! can never accidentally override the semantic layout priority.
 
-use core::cmp::Reverse;
+use core::cmp::{Ordering, Reverse};
 use core::fmt;
+use std::collections::BinaryHeap;
 use veyra_pricing::MoneyMicros;
 
 pub const RANKING_VERSION_V1: u32 = 1;
@@ -60,17 +61,33 @@ pub fn top_k(
     limit: usize,
 ) -> Result<Vec<RankedCandidate>, RankingError> {
     validate(profile, candidates, limit)?;
-    let mut ranked = candidates
-        .iter()
-        .copied()
-        .map(|candidate| RankedCandidate {
+    if limit == 0 {
+        return Ok(Vec::new());
+    }
+
+    let mut heap = BinaryHeap::with_capacity(limit);
+    for candidate in candidates.iter().copied() {
+        let ranked = RankedCandidate {
             candidate,
             deterministic_score: score(profile.kind, candidate),
-        })
-        .collect::<Vec<_>>();
+        };
+        let entry = HeapEntry {
+            key: ordering_key(profile.kind, ranked),
+            ranked,
+        };
+        if heap.len() < limit {
+            heap.push(entry);
+        } else if heap.peek().is_some_and(|worst| entry.key < worst.key) {
+            let _ = heap.pop();
+            heap.push(entry);
+        }
+    }
 
+    let mut ranked = heap
+        .into_iter()
+        .map(|entry| entry.ranked)
+        .collect::<Vec<_>>();
     ranked.sort_by_key(|entry| ordering_key(profile.kind, *entry));
-    ranked.truncate(limit);
     Ok(ranked)
 }
 
@@ -114,10 +131,27 @@ fn score(kind: RankingKind, candidate: RankCandidate) -> i128 {
     }
 }
 
-fn ordering_key(
-    kind: RankingKind,
-    entry: RankedCandidate,
-) -> (u16, i128, u32, Reverse<u16>, Reverse<u16>, u32, u32) {
+type RankingKey = (u16, i128, u32, Reverse<u16>, Reverse<u16>, u32, u32);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct HeapEntry {
+    key: RankingKey,
+    ranked: RankedCandidate,
+}
+
+impl Ord for HeapEntry {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.key.cmp(&other.key)
+    }
+}
+
+impl PartialOrd for HeapEntry {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+fn ordering_key(kind: RankingKind, entry: RankedCandidate) -> RankingKey {
     let candidate = entry.candidate;
     let family_penalty = match kind {
         RankingKind::BestForFamily => candidate.family_penalty,

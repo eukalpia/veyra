@@ -51,11 +51,9 @@ pub fn validate_room(
             .age_at(check_in)
             .map_err(|_| OccupancyError::InvalidAge(*id))?;
         if age >= adult_age {
-            adults = adults.checked_add(1).ok_or(OccupancyError::CountOverflow)?;
+            adults += 1;
         } else {
-            children = children
-                .checked_add(1)
-                .ok_or(OccupancyError::CountOverflow)?;
+            children += 1;
         }
         let authorized_guardian_present = party.guardians().iter().any(|edge| {
             edge.dependent == *id && edge.valid_for_rooming && occupant_set.contains(&edge.guardian)
@@ -74,9 +72,7 @@ pub fn validate_room(
     {
         return Err(OccupancyError::PolicyRejected);
     }
-    let occupant_count = adults
-        .checked_add(children)
-        .ok_or(OccupancyError::CountOverflow)?;
+    let occupant_count = adults + children;
     Ok(OccupancyReport {
         occupant_count,
         adult_count: adults,

@@ -81,7 +81,7 @@ impl Rule {
     }
 
     fn validate_inner(&self, nodes: &mut usize) -> Result<(), RuleError> {
-        *nodes = nodes.checked_add(1).ok_or(RuleError::RuleTooComplex)?;
+        *nodes += 1;
         if *nodes > MAX_RULE_NODES {
             return Err(RuleError::RuleTooComplex);
         }
@@ -122,8 +122,7 @@ impl Rule {
     fn evaluate_validated(&self, context: &OccupancyContext) -> Result<bool, RuleError> {
         match self {
             Self::Capacity { min, max } => {
-                let count =
-                    u16::try_from(context.occupants.len()).map_err(|_| RuleError::CountOverflow)?;
+                let count = context.occupants.len() as u16;
                 Ok((*min..=*max).contains(&count))
             }
             Self::AgeRangeCount {
@@ -132,8 +131,7 @@ impl Rule {
                 min_count,
                 max_count,
             } => {
-                let count = u16::try_from(context.count_age_range(*min_age, *max_age))
-                    .map_err(|_| RuleError::CountOverflow)?;
+                let count = context.count_age_range(*min_age, *max_age) as u16;
                 Ok((*min_count..=*max_count).contains(&count))
             }
             Self::RequireAdult {

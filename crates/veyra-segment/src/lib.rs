@@ -73,8 +73,7 @@ impl Segment {
         if payload.len() > MAX_PAYLOAD_BYTES {
             return Err(SegmentError::PayloadTooLarge(payload.len()));
         }
-        let payload_length =
-            u64::try_from(payload.len()).map_err(|_| SegmentError::LengthOverflow)?;
+        let payload_length = payload.len() as u64;
         let checksum = crc32c(&payload);
         Ok(Self {
             header: SegmentHeader {
@@ -102,9 +101,7 @@ impl Segment {
     }
 
     pub fn encode(&self) -> Result<Vec<u8>, SegmentError> {
-        let total = HEADER_LEN
-            .checked_add(self.payload.len())
-            .ok_or(SegmentError::LengthOverflow)?;
+        let total = HEADER_LEN + self.payload.len();
         let mut out = Vec::with_capacity(total);
         out.extend_from_slice(&MAGIC);
         out.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
@@ -115,15 +112,12 @@ impl Segment {
         out.extend_from_slice(&self.header.start_lsn.get().to_le_bytes());
         out.extend_from_slice(&self.header.end_lsn.get().to_le_bytes());
         out.extend_from_slice(&self.header.record_count.to_le_bytes());
-        let payload_offset = u64::try_from(HEADER_LEN).map_err(|_| SegmentError::LengthOverflow)?;
+        let payload_offset = HEADER_LEN as u64;
         out.extend_from_slice(&payload_offset.to_le_bytes());
         out.extend_from_slice(&self.header.payload_length.to_le_bytes());
         out.extend_from_slice(&self.header.checksum.to_le_bytes());
         out.extend_from_slice(&0_u32.to_le_bytes());
         out.extend_from_slice(&0_u64.to_le_bytes());
-        if out.len() != HEADER_LEN {
-            return Err(SegmentError::InternalHeaderSize(out.len()));
-        }
         out.extend_from_slice(&self.payload);
         Ok(out)
     }
@@ -135,35 +129,31 @@ impl Segment {
         if bytes[0..4] != MAGIC {
             return Err(SegmentError::InvalidMagic);
         }
-        let version = read_u16(&bytes[4..6])?;
+        let version = read_u16(&bytes[4..6]);
         if version != FORMAT_VERSION {
             return Err(SegmentError::UnsupportedVersion(version));
         }
-        let segment_type = SegmentType::try_from(read_u16(&bytes[6..8])?)?;
-        let flags = read_u32(&bytes[8..12])?;
-        let generation = GenerationId::new(read_u64(&bytes[16..24])?);
-        let start_lsn = LogSequenceNumber::new(read_u64(&bytes[24..32])?);
-        let end_lsn = LogSequenceNumber::new(read_u64(&bytes[32..40])?);
+        let segment_type = SegmentType::try_from(read_u16(&bytes[6..8]))?;
+        let flags = read_u32(&bytes[8..12]);
+        let generation = GenerationId::new(read_u64(&bytes[16..24]));
+        let start_lsn = LogSequenceNumber::new(read_u64(&bytes[24..32]));
+        let end_lsn = LogSequenceNumber::new(read_u64(&bytes[32..40]));
         if end_lsn < start_lsn {
             return Err(SegmentError::LsnRangeReversed);
         }
-        let record_count = read_u64(&bytes[40..48])?;
-        let payload_offset = read_u64(&bytes[48..56])?;
-        let payload_length = read_u64(&bytes[56..64])?;
-        let checksum = read_u32(&bytes[64..68])?;
-        let expected_offset =
-            u64::try_from(HEADER_LEN).map_err(|_| SegmentError::LengthOverflow)?;
+        let record_count = read_u64(&bytes[40..48]);
+        let payload_offset = read_u64(&bytes[48..56]);
+        let payload_length = read_u64(&bytes[56..64]);
+        let checksum = read_u32(&bytes[64..68]);
+        let expected_offset = HEADER_LEN as u64;
         if payload_offset != expected_offset {
             return Err(SegmentError::InvalidPayloadOffset(payload_offset));
         }
-        let payload_len =
-            usize::try_from(payload_length).map_err(|_| SegmentError::LengthOverflow)?;
-        if payload_len > MAX_PAYLOAD_BYTES {
-            return Err(SegmentError::PayloadTooLarge(payload_len));
+        if payload_length > MAX_PAYLOAD_BYTES as u64 {
+            return Err(SegmentError::PayloadTooLarge(MAX_PAYLOAD_BYTES + 1));
         }
-        let end = HEADER_LEN
-            .checked_add(payload_len)
-            .ok_or(SegmentError::LengthOverflow)?;
+        let payload_len = payload_length as usize;
+        let end = HEADER_LEN + payload_len;
         if bytes.len() != end {
             return Err(SegmentError::LengthMismatch {
                 expected: end,
@@ -214,13 +204,12 @@ impl Segment {
     pub fn read(path: impl AsRef<Path>) -> Result<Self, SegmentError> {
         let mut file = File::open(path)?;
         let metadata = file.metadata()?;
-        let len = usize::try_from(metadata.len()).map_err(|_| SegmentError::LengthOverflow)?;
-        let max_file = HEADER_LEN
-            .checked_add(MAX_PAYLOAD_BYTES)
-            .ok_or(SegmentError::LengthOverflow)?;
-        if len > max_file {
-            return Err(SegmentError::PayloadTooLarge(len - HEADER_LEN));
+        let file_len = metadata.len();
+        let max_file = HEADER_LEN + MAX_PAYLOAD_BYTES;
+        if file_len > max_file as u64 {
+            return Err(SegmentError::PayloadTooLarge(MAX_PAYLOAD_BYTES + 1));
         }
+        let len = file_len as usize;
         let mut bytes = Vec::with_capacity(len);
         file.read_to_end(&mut bytes)?;
         Self::decode(&bytes)
@@ -250,26 +239,16 @@ fn sync_parent(path: &Path) -> Result<(), SegmentError> {
     Ok(())
 }
 
-fn read_u16(bytes: &[u8]) -> Result<u16, SegmentError> {
-    Ok(u16::from_le_bytes(
-        bytes
-            .try_into()
-            .map_err(|_| SegmentError::MalformedHeader)?,
-    ))
+fn read_u16(bytes: &[u8]) -> u16 {
+    u16::from_le_bytes([bytes[0], bytes[1]])
 }
-fn read_u32(bytes: &[u8]) -> Result<u32, SegmentError> {
-    Ok(u32::from_le_bytes(
-        bytes
-            .try_into()
-            .map_err(|_| SegmentError::MalformedHeader)?,
-    ))
+fn read_u32(bytes: &[u8]) -> u32 {
+    u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
 }
-fn read_u64(bytes: &[u8]) -> Result<u64, SegmentError> {
-    Ok(u64::from_le_bytes(
-        bytes
-            .try_into()
-            .map_err(|_| SegmentError::MalformedHeader)?,
-    ))
+fn read_u64(bytes: &[u8]) -> u64 {
+    u64::from_le_bytes([
+        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+    ])
 }
 
 fn crc32c(bytes: &[u8]) -> u32 {

@@ -6,7 +6,7 @@
 //! assignment space, validates every complete assignment with Veyra hard constraints, and fails
 //! closed if the configured state budget cannot prove the optimum.
 
-use core::fmt;
+use core::{cmp::Ordering, fmt};
 use std::collections::BTreeSet;
 use veyra_occupancy::validate_room;
 use veyra_party::{BookingParty, CivilDate, ConstraintStrength, RoomingRelation, TravelerId};
@@ -108,52 +108,17 @@ pub fn solve(
         });
     }
 
-    context.valid.sort_by_key(solution_canonical_key);
+    context.valid.sort_by(compare_canonical);
     context.valid.dedup();
     let valid_solution_count = context.valid.len();
     if valid_solution_count > config.max_solutions {
         return Err(SolverError::TooManyValidSolutions(valid_solution_count));
     }
 
-    let cheapest = context
-        .valid
-        .iter()
-        .min_by_key(|solution| {
-            (
-                solution.total_price,
-                solution.rooms.len(),
-                solution.soft_penalty,
-                solution.rooms.clone(),
-            )
-        })
-        .cloned()
-        .ok_or(SolverError::InternalInvariant)?;
-    let fewest = context
-        .valid
-        .iter()
-        .min_by_key(|solution| {
-            (
-                solution.rooms.len(),
-                solution.total_price,
-                solution.soft_penalty,
-                solution.rooms.clone(),
-            )
-        })
-        .cloned()
-        .ok_or(SolverError::InternalInvariant)?;
-    let family = context
-        .valid
-        .iter()
-        .min_by_key(|solution| {
-            (
-                solution.soft_penalty,
-                solution.total_price,
-                solution.rooms.len(),
-                solution.rooms.clone(),
-            )
-        })
-        .cloned()
-        .ok_or(SolverError::InternalInvariant)?;
+    // The early empty-result return proves this slice is non-empty.
+    let cheapest = select_best(&context.valid, compare_cheapest);
+    let fewest = select_best(&context.valid, compare_fewest_rooms);
+    let family = select_best(&context.valid, compare_family_layout);
 
     Ok(SolverResult {
         explored_states: context.explored_states,
@@ -181,9 +146,6 @@ fn validate_input(
     offers: &[RoomOffer],
     config: SolverConfig,
 ) -> Result<(), SolverError> {
-    if travelers.is_empty() {
-        return Err(SolverError::EmptyParty);
-    }
     if travelers.len() > HARD_MAX_TRAVELERS {
         return Err(SolverError::TooManyTravelers(travelers.len()));
     }
@@ -243,10 +205,7 @@ fn search(context: &mut SearchContext<'_>, traveler_index: usize) -> Result<(), 
     }
 
     for room_index in 0..context.offers.len() {
-        context.explored_states = context
-            .explored_states
-            .checked_add(1)
-            .ok_or(SolverError::StateBudgetExhausted)?;
+        context.explored_states += 1;
         if context.explored_states > context.config.max_states {
             return Err(SolverError::StateBudgetExhausted);
         }
@@ -351,13 +310,13 @@ fn layout_soft_penalty(context: &SearchContext<'_>) -> Result<u32, SolverError> 
             RoomingRelation::SameBuilding => left_offer.building == right_offer.building,
             relation => return Err(SolverError::UnsupportedPreference(relation)),
         };
-        let violated = match intent.strength {
-            ConstraintStrength::Prefer => !satisfied,
-            ConstraintStrength::Avoid => satisfied,
-            ConstraintStrength::Must => false,
+        let violated = if intent.strength == ConstraintStrength::Prefer {
+            !satisfied
+        } else {
+            satisfied
         };
         if violated {
-            penalty = penalty.checked_add(1).ok_or(SolverError::PenaltyOverflow)?;
+            penalty += 1;
         }
     }
     Ok(penalty)
@@ -376,15 +335,46 @@ fn assignment_of(context: &SearchContext<'_>, traveler: TravelerId) -> Result<us
         .ok_or(SolverError::InternalInvariant)
 }
 
-fn solution_canonical_key(
-    solution: &StaySolution,
-) -> (MoneyMicros, usize, u32, Vec<RoomAllocation>) {
-    (
-        solution.total_price,
-        solution.rooms.len(),
-        solution.soft_penalty,
-        solution.rooms.clone(),
-    )
+fn select_best(
+    solutions: &[StaySolution],
+    compare: fn(&StaySolution, &StaySolution) -> Ordering,
+) -> StaySolution {
+    let mut best = &solutions[0];
+    for solution in &solutions[1..] {
+        if compare(solution, best).is_lt() {
+            best = solution;
+        }
+    }
+    best.clone()
+}
+
+fn compare_canonical(left: &StaySolution, right: &StaySolution) -> Ordering {
+    left.total_price
+        .cmp(&right.total_price)
+        .then_with(|| left.rooms.len().cmp(&right.rooms.len()))
+        .then_with(|| left.soft_penalty.cmp(&right.soft_penalty))
+        .then_with(|| left.rooms.cmp(&right.rooms))
+}
+
+fn compare_cheapest(left: &StaySolution, right: &StaySolution) -> Ordering {
+    compare_canonical(left, right)
+}
+
+fn compare_fewest_rooms(left: &StaySolution, right: &StaySolution) -> Ordering {
+    left.rooms
+        .len()
+        .cmp(&right.rooms.len())
+        .then_with(|| left.total_price.cmp(&right.total_price))
+        .then_with(|| left.soft_penalty.cmp(&right.soft_penalty))
+        .then_with(|| left.rooms.cmp(&right.rooms))
+}
+
+fn compare_family_layout(left: &StaySolution, right: &StaySolution) -> Ordering {
+    left.soft_penalty
+        .cmp(&right.soft_penalty)
+        .then_with(|| left.total_price.cmp(&right.total_price))
+        .then_with(|| left.rooms.len().cmp(&right.rooms.len()))
+        .then_with(|| left.rooms.cmp(&right.rooms))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -46,9 +46,6 @@ impl CompiledRestrictions {
     }
 
     pub fn validate_stay(&self, check_in: i32, check_out: i32) -> Result<u16, RestrictionError> {
-        if self.schema_version != RESTRICTION_SCHEMA_V1 {
-            return Err(RestrictionError::UnsupportedSchema(self.schema_version));
-        }
         let nights = i64::from(check_out) - i64::from(check_in);
         if nights <= 0 {
             return Err(RestrictionError::InvalidStayInterval);

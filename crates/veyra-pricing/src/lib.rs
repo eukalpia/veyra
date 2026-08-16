@@ -108,7 +108,7 @@ impl PriceVector {
         if nights_i64 <= 0 {
             return Err(PricingError::InvalidStay);
         }
-        let nights = usize::try_from(nights_i64).map_err(|_| PricingError::InvalidStay)?;
+        let nights = nights_i64 as usize;
         if nights > MAX_QUOTE_NIGHTS {
             return Err(PricingError::StayTooLong(nights));
         }
@@ -116,8 +116,8 @@ impl PriceVector {
         if start_i64 < 0 {
             return Err(PricingError::OutsidePriceHorizon);
         }
-        let start = usize::try_from(start_i64).map_err(|_| PricingError::OutsidePriceHorizon)?;
-        let end = start.checked_add(nights).ok_or(PricingError::Overflow)?;
+        let start = start_i64 as usize;
+        let end = start + nights;
         let slice = self
             .nightly
             .get(start..end)
@@ -133,7 +133,7 @@ impl PriceVector {
             .per_adult_per_night
             .checked_mul(adults)?
             .checked_add(adjustment.per_child_per_night.checked_mul(children)?)?;
-        let night_count = u32::try_from(nights).map_err(|_| PricingError::Overflow)?;
+        let night_count = nights as u32;
         let occupancy_adjustment = per_night.checked_mul(night_count)?;
         let total = base.checked_add(occupancy_adjustment)?;
         if total.get() < 0 {

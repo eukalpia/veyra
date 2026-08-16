@@ -83,11 +83,10 @@ impl CivilDate {
         if (date.month, date.day) < (self.month, self.day) {
             years -= 1;
         }
-        let age = u16::try_from(years).map_err(|_| PartyError::AgeOutOfRange)?;
-        if age > MAX_AGE {
+        if years > i32::from(MAX_AGE) {
             return Err(PartyError::AgeOutOfRange);
         }
-        Ok(age)
+        Ok(years as u16)
     }
 }
 

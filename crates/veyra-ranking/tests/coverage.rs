@@ -56,3 +56,21 @@ fn zero_limit_and_flexibility_validation_are_deterministic() {
         assert!(!error.to_string().is_empty());
     }
 }
+
+#[test]
+fn bounded_heap_replaces_only_the_current_worst_candidate() {
+    let ranked = top_k(
+        RankingProfile::v1(RankingKind::Cheapest),
+        &[candidate(10), candidate(20), candidate(5), candidate(30)],
+        2,
+    )
+    .unwrap_or_else(|_| unreachable!());
+
+    assert_eq!(
+        ranked
+            .iter()
+            .map(|entry| entry.candidate.room_id)
+            .collect::<Vec<_>>(),
+        vec![5, 10]
+    );
+}

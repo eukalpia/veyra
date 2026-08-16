@@ -46,8 +46,7 @@ impl SearchEngine {
         availability: AvailabilityIndex,
         rooms: Vec<RoomDocument>,
     ) -> Result<Self, QueryError> {
-        let expected =
-            usize::try_from(availability.room_count()).map_err(|_| QueryError::CatalogInvariant)?;
+        let expected = availability.room_count() as usize;
         if rooms.len() != expected {
             return Err(QueryError::RoomDocumentCountMismatch {
                 expected,
@@ -55,7 +54,7 @@ impl SearchEngine {
             });
         }
         for (index, room) in rooms.iter().enumerate() {
-            let expected_id = u32::try_from(index).map_err(|_| QueryError::CatalogInvariant)?;
+            let expected_id = index as u32;
             if room.room_id != expected_id {
                 return Err(QueryError::NonDenseRoomId {
                     expected: expected_id,
@@ -83,9 +82,8 @@ impl SearchEngine {
             .travelers()
             .map(veyra_party::Traveler::id)
             .collect::<Vec<_>>();
-        if occupant_ids.len() > MAX_QUERY_PARTY {
-            return Err(QueryError::PartyTooLarge(occupant_ids.len()));
-        }
+        let check_in_day = query.check_in_day_i32()?;
+        let check_out_day = query.check_out_day_i32()?;
 
         let mut explain = QueryExplain {
             initial_room_count: self.rooms.len(),
@@ -101,15 +99,8 @@ impl SearchEngine {
         };
         let mut rank_candidates = Vec::new();
 
-        for room_id in available.room_ids() {
-            let room_index = usize::try_from(room_id).map_err(|_| QueryError::CatalogInvariant)?;
-            let room = self
-                .rooms
-                .get(room_index)
-                .ok_or(QueryError::MissingRoomProjection(room_id))?;
-            if room.room_id != room_id {
-                return Err(QueryError::CatalogInvariant);
-            }
+        for room_id in available.iter() {
+            let room = &self.rooms[room_id as usize];
             if room.destination_id != query.destination_id {
                 continue;
             }
@@ -117,7 +108,7 @@ impl SearchEngine {
 
             match room
                 .restrictions
-                .validate_stay(query.check_in_day_i32()?, query.check_out_day_i32()?)
+                .validate_stay(check_in_day, check_out_day)
             {
                 Ok(_) => explain.restriction_candidates += 1,
                 Err(error) if is_restriction_rejection(error) => continue,
@@ -141,8 +132,8 @@ impl SearchEngine {
             let projected = room
                 .prices
                 .quote(
-                    query.check_in_day_i32()?,
-                    query.check_out_day_i32()?,
+                    check_in_day,
+                    check_out_day,
                     occupancy.adult_count,
                     occupancy.child_count,
                     room.occupancy_adjustment,

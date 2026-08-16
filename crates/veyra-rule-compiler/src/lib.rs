@@ -140,77 +140,59 @@ pub fn compile(schema_version: u16, rule: &Rule) -> Result<CompiledRule, Compile
     }
     rule.validate().map_err(CompileError::InvalidRule)?;
     let mut ops = Vec::new();
-    compile_inner(rule, &mut ops)?;
+    compile_inner(rule, &mut ops);
     Ok(CompiledRule {
         schema_version,
         ops,
     })
 }
 
-fn compile_inner(rule: &Rule, ops: &mut Vec<Op>) -> Result<(), CompileError> {
+fn compile_inner(rule: &Rule, ops: &mut Vec<Op>) {
     match rule {
-        Rule::Capacity { min, max } => push_op(
-            ops,
-            Op::Capacity {
-                min: *min,
-                max: *max,
-            },
-        ),
+        Rule::Capacity { min, max } => ops.push(Op::Capacity {
+            min: *min,
+            max: *max,
+        }),
         Rule::AgeRangeCount {
             min_age,
             max_age,
             min_count,
             max_count,
-        } => push_op(
-            ops,
-            Op::AgeRangeCount {
-                min_age: *min_age,
-                max_age: *max_age,
-                min_count: *min_count,
-                max_count: *max_count,
-            },
-        ),
+        } => ops.push(Op::AgeRangeCount {
+            min_age: *min_age,
+            max_age: *max_age,
+            min_count: *min_count,
+            max_count: *max_count,
+        }),
         Rule::RequireAdult {
             adult_age,
             min_adults,
-        } => push_op(
-            ops,
-            Op::RequireAdult {
-                adult_age: *adult_age,
-                min_adults: *min_adults,
-            },
-        ),
-        Rule::RequireGuardianForMinors { minor_below_age } => push_op(
-            ops,
-            Op::RequireGuardianForMinors {
+        } => ops.push(Op::RequireAdult {
+            adult_age: *adult_age,
+            min_adults: *min_adults,
+        }),
+        Rule::RequireGuardianForMinors { minor_below_age } => {
+            ops.push(Op::RequireGuardianForMinors {
                 minor_below_age: *minor_below_age,
-            },
-        ),
+            });
+        }
         Rule::And(children) => {
             for child in children {
-                compile_inner(child, ops)?;
+                compile_inner(child, ops);
             }
-            push_op(ops, Op::And(children.len()))
+            ops.push(Op::And(children.len()));
         }
         Rule::Or(children) => {
             for child in children {
-                compile_inner(child, ops)?;
+                compile_inner(child, ops);
             }
-            push_op(ops, Op::Or(children.len()))
+            ops.push(Op::Or(children.len()));
         }
         Rule::Not(child) => {
-            compile_inner(child, ops)?;
-            push_op(ops, Op::Not)
+            compile_inner(child, ops);
+            ops.push(Op::Not);
         }
     }
-}
-
-fn push_op(ops: &mut Vec<Op>, op: Op) -> Result<(), CompileError> {
-    if ops.len() == MAX_OPS {
-        return Err(CompileError::TooManyOps(MAX_OPS + 1));
-    }
-    ops.push(op);
-    Ok(())
 }
 
 fn push(
@@ -399,10 +381,20 @@ mod tests {
 
     #[test]
     fn compiler_capacity_guard_and_error_surface_are_explicit() {
-        let mut ops = vec![Op::Not; MAX_OPS];
+        let mut maximum = Rule::Capacity { min: 1, max: 1 };
+        for _ in 1..MAX_OPS {
+            maximum = Rule::Not(Box::new(maximum));
+        }
         assert_eq!(
-            compile_inner(&Rule::Capacity { min: 1, max: 1 }, &mut ops),
-            Err(CompileError::TooManyOps(MAX_OPS + 1))
+            compile(RULE_SCHEMA_V1, &maximum)
+                .unwrap_or_else(|_| unreachable!())
+                .op_count(),
+            MAX_OPS
+        );
+        let too_complex = Rule::Not(Box::new(maximum));
+        assert_eq!(
+            compile(RULE_SCHEMA_V1, &too_complex),
+            Err(CompileError::InvalidRule(RuleError::RuleTooComplex))
         );
         for error in [
             CompileError::UnsupportedSchema(2),
