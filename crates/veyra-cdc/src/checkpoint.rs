@@ -102,10 +102,7 @@ impl AppliedCheckpoint {
 
     fn recover(&mut self) -> Result<(), CheckpointError> {
         self.file.flush()?;
-        let mut reader = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(&self.path)?;
+        let mut reader = OpenOptions::new().read(true).write(true).open(&self.path)?;
         reader.seek(SeekFrom::Start(0))?;
         let file_len = reader.metadata()?.len();
         let record_len = u64::try_from(RECORD_LEN).map_err(|_| CheckpointError::LengthOverflow)?;
@@ -182,7 +179,9 @@ fn decode_record(record: &[u8; RECORD_LEN], offset: u64) -> Result<AppliedState,
 
 fn read_u64(bytes: &[u8]) -> Result<u64, CheckpointError> {
     Ok(u64::from_le_bytes(
-        bytes.try_into().map_err(|_| CheckpointError::CorruptRecord)?,
+        bytes
+            .try_into()
+            .map_err(|_| CheckpointError::CorruptRecord)?,
     ))
 }
 
@@ -229,10 +228,16 @@ impl fmt::Display for CheckpointError {
             Self::Regressed => formatter.write_str("checkpoint LSN regressed"),
             Self::ConflictingCommit(lsn) => write!(formatter, "conflicting checkpoint at {lsn:?}"),
             Self::DurableMismatch(lsn) => {
-                write!(formatter, "checkpoint does not match durable transaction at {lsn:?}")
+                write!(
+                    formatter,
+                    "checkpoint does not match durable transaction at {lsn:?}"
+                )
             }
             Self::MissingFromJournal(lsn) => {
-                write!(formatter, "checkpoint transaction is missing from journal at {lsn:?}")
+                write!(
+                    formatter,
+                    "checkpoint transaction is missing from journal at {lsn:?}"
+                )
             }
             Self::LengthOverflow => formatter.write_str("checkpoint length overflow"),
         }
@@ -338,7 +343,10 @@ mod tests {
             checkpoint.advance(&record)?;
         }
         let mut bytes = Vec::new();
-        OpenOptions::new().read(true).open(&path)?.read_to_end(&mut bytes)?;
+        OpenOptions::new()
+            .read(true)
+            .open(&path)?
+            .read_to_end(&mut bytes)?;
         bytes[24] ^= 0x55;
         let mut file = OpenOptions::new().write(true).truncate(true).open(&path)?;
         file.write_all(&bytes)?;
@@ -353,7 +361,8 @@ mod tests {
     }
 
     #[test]
-    fn conflicting_and_regressed_transitions_fail_closed() -> Result<(), Box<dyn std::error::Error>> {
+    fn conflicting_and_regressed_transitions_fail_closed() -> Result<(), Box<dyn std::error::Error>>
+    {
         let path = path("ordering");
         let mut checkpoint = AppliedCheckpoint::open(&path)?;
         checkpoint.advance(&batch(20, 21, 1))?;
@@ -371,6 +380,9 @@ mod tests {
 
     #[test]
     fn display_is_stable() {
-        assert_eq!(CheckpointError::Regressed.to_string(), "checkpoint LSN regressed");
+        assert_eq!(
+            CheckpointError::Regressed.to_string(),
+            "checkpoint LSN regressed"
+        );
     }
 }

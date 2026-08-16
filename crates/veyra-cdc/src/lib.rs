@@ -20,9 +20,9 @@ mod transaction;
 pub use checkpoint::{AppliedCheckpoint, AppliedState, CheckpointAdvance, CheckpointError};
 pub use journal::{Journal, JournalError, ReplayDecision, ReplayGuard};
 pub use live::{
-    process_replication_event, recover_checkpointed, run_pgwire, CdcProgress,
-    CheckpointApplyError, LiveEventOutcome, LiveReplicationError, LiveReplicationState,
-    LiveRunSummary,
+    CdcProgress, CheckpointApplyError, LiveEventOutcome, LiveReplicationError,
+    LiveReplicationState, LiveRunSummary, process_replication_event, recover_checkpointed,
+    run_pgwire,
 };
 pub use pgoutput::{
     ColumnMetadata, PgOutputDecoder, PgOutputError, PgOutputMessage, RelationMetadata,

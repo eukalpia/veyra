@@ -107,11 +107,7 @@ where
     }
 }
 
-impl<E> std::error::Error for CheckpointApplyError<E>
-where
-    E: std::error::Error + 'static,
-{
-}
+impl<E> std::error::Error for CheckpointApplyError<E> where E: std::error::Error + 'static {}
 
 pub fn recover_checkpointed<E, F>(
     processor: &mut DurableTransactionProcessor,
@@ -166,9 +162,8 @@ where
             commit_time_micros,
         } => {
             state.observe_received(final_lsn);
-            let mut checkpointing_apply = |batch: &TransactionBatch| {
-                apply_checkpointed(checkpoint, batch, apply)
-            };
+            let mut checkpointing_apply =
+                |batch: &TransactionBatch| apply_checkpointed(checkpoint, batch, apply);
             let outcome = processor
                 .consume_message(
                     PgOutputMessage::Begin {
@@ -193,9 +188,8 @@ where
         } => {
             state.observe_received(wal_start);
             state.observe_received(wal_end);
-            let mut checkpointing_apply = |batch: &TransactionBatch| {
-                apply_checkpointed(checkpoint, batch, apply)
-            };
+            let mut checkpointing_apply =
+                |batch: &TransactionBatch| apply_checkpointed(checkpoint, batch, apply);
             match processor
                 .push(&data, &mut checkpointing_apply)
                 .map_err(LiveReplicationError::Processor)?
@@ -215,9 +209,8 @@ where
             commit_time_micros,
         } => {
             state.observe_received(end_lsn);
-            let mut checkpointing_apply = |batch: &TransactionBatch| {
-                apply_checkpointed(checkpoint, batch, apply)
-            };
+            let mut checkpointing_apply =
+                |batch: &TransactionBatch| apply_checkpointed(checkpoint, batch, apply);
             let outcome = processor
                 .consume_message(
                     PgOutputMessage::Commit {
@@ -263,8 +256,8 @@ pub async fn run_pgwire<E, F>(
 where
     F: FnMut(&TransactionBatch) -> Result<(), E>,
 {
-    let mut processor = DurableTransactionProcessor::open(journal_path)
-        .map_err(LiveReplicationError::Journal)?;
+    let mut processor =
+        DurableTransactionProcessor::open(journal_path).map_err(LiveReplicationError::Journal)?;
     let mut checkpoint =
         AppliedCheckpoint::open(checkpoint_path).map_err(LiveReplicationError::Checkpoint)?;
     let resume_lsn = recover_checkpointed(&mut processor, &mut checkpoint, apply)?;
@@ -282,13 +275,8 @@ where
         .map_err(LiveReplicationError::Transport)?
     {
         events_seen = events_seen.saturating_add(1);
-        match process_replication_event(
-            &mut processor,
-            &mut checkpoint,
-            &mut state,
-            event,
-            apply,
-        )? {
+        match process_replication_event(&mut processor, &mut checkpoint, &mut state, event, apply)?
+        {
             LiveEventOutcome::Continue => {}
             LiveEventOutcome::Acknowledge(lsn) => {
                 client.update_applied_lsn(Lsn::from_u64(lsn.get()));
@@ -359,7 +347,10 @@ where
             Self::Processor(error) => write!(formatter, "processor: {error}"),
             Self::Transport(error) => write!(formatter, "transport: {error}"),
             Self::UnsupportedLogicalMessage(prefix) => {
-                write!(formatter, "unsupported logical replication message {prefix:?}")
+                write!(
+                    formatter,
+                    "unsupported logical replication message {prefix:?}"
+                )
             }
             Self::StoppedMidTransaction(lsn) => {
                 write!(formatter, "replication stopped mid-transaction at {lsn:?}")
@@ -371,11 +362,7 @@ where
     }
 }
 
-impl<E> std::error::Error for LiveReplicationError<E>
-where
-    E: std::error::Error + 'static,
-{
-}
+impl<E> std::error::Error for LiveReplicationError<E> where E: std::error::Error + 'static {}
 
 #[cfg(test)]
 mod tests {
@@ -421,11 +408,7 @@ mod tests {
         bytes.push(b'N');
         bytes.extend_from_slice(&1_u16.to_be_bytes());
         bytes.push(b't');
-        bytes.extend_from_slice(
-            &u32::try_from(value.len())
-                .unwrap_or_default()
-                .to_be_bytes(),
-        );
+        bytes.extend_from_slice(&u32::try_from(value.len()).unwrap_or_default().to_be_bytes());
         bytes.extend_from_slice(value);
         bytes
     }
@@ -493,7 +476,8 @@ mod tests {
     }
 
     #[test]
-    fn ack_requires_journal_apply_and_checkpoint_durability() -> Result<(), Box<dyn std::error::Error>> {
+    fn ack_requires_journal_apply_and_checkpoint_durability()
+    -> Result<(), Box<dyn std::error::Error>> {
         let (journal_path, checkpoint_path) = paths("ack");
         let mut processor = DurableTransactionProcessor::open(&journal_path)?;
         let mut checkpoint = AppliedCheckpoint::open(&checkpoint_path)?;
@@ -518,7 +502,10 @@ mod tests {
             )?,
             LiveEventOutcome::Continue
         );
-        assert_eq!(feed_transaction(&mut processor, &mut checkpoint, &mut state, &mut apply)?, LiveEventOutcome::Acknowledge(LogSequenceNumber::new(21)));
+        assert_eq!(
+            feed_transaction(&mut processor, &mut checkpoint, &mut state, &mut apply)?,
+            LiveEventOutcome::Acknowledge(LogSequenceNumber::new(21))
+        );
         assert_eq!(applied.get(), 1);
         assert_eq!(checkpoint.state().end_lsn().get(), 21);
         assert_eq!(state.progress().durable_lsn.get(), 21);
@@ -528,7 +515,8 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_redelivery_does_not_reapply_checkpointed_transaction() -> Result<(), Box<dyn std::error::Error>> {
+    fn duplicate_redelivery_does_not_reapply_checkpointed_transaction()
+    -> Result<(), Box<dyn std::error::Error>> {
         let (journal_path, checkpoint_path) = paths("duplicate");
         let mut processor = DurableTransactionProcessor::open(&journal_path)?;
         let mut checkpoint = AppliedCheckpoint::open(&checkpoint_path)?;
@@ -547,7 +535,8 @@ mod tests {
     }
 
     #[test]
-    fn restart_recovery_skips_already_checkpointed_apply() -> Result<(), Box<dyn std::error::Error>> {
+    fn restart_recovery_skips_already_checkpointed_apply() -> Result<(), Box<dyn std::error::Error>>
+    {
         let (journal_path, checkpoint_path) = paths("recover");
         {
             let mut processor = DurableTransactionProcessor::open(&journal_path)?;
@@ -563,14 +552,18 @@ mod tests {
             applied.set(applied.get().saturating_add(1));
             Ok(())
         };
-        assert_eq!(recover_checkpointed(&mut processor, &mut checkpoint, &mut apply)?.get(), 21);
+        assert_eq!(
+            recover_checkpointed(&mut processor, &mut checkpoint, &mut apply)?.get(),
+            21
+        );
         assert_eq!(applied.get(), 0);
         cleanup(&journal_path, &checkpoint_path);
         Ok(())
     }
 
     #[test]
-    fn malformed_raw_payload_yields_no_ack_or_checkpoint() -> Result<(), Box<dyn std::error::Error>> {
+    fn malformed_raw_payload_yields_no_ack_or_checkpoint() -> Result<(), Box<dyn std::error::Error>>
+    {
         let (journal_path, checkpoint_path) = paths("decode");
         let mut processor = DurableTransactionProcessor::open(&journal_path)?;
         let mut checkpoint = AppliedCheckpoint::open(&checkpoint_path)?;
@@ -602,7 +595,8 @@ mod tests {
     }
 
     #[test]
-    fn mid_transaction_stop_and_logical_message_fail_closed() -> Result<(), Box<dyn std::error::Error>> {
+    fn mid_transaction_stop_and_logical_message_fail_closed()
+    -> Result<(), Box<dyn std::error::Error>> {
         let (journal_path, checkpoint_path) = paths("closed");
         let mut processor = DurableTransactionProcessor::open(&journal_path)?;
         let mut checkpoint = AppliedCheckpoint::open(&checkpoint_path)?;
@@ -660,7 +654,9 @@ mod tests {
                 &mut processor,
                 &mut checkpoint,
                 &mut state,
-                ReplicationEvent::StoppedAt { reached: Lsn::from_u64(8) },
+                ReplicationEvent::StoppedAt {
+                    reached: Lsn::from_u64(8)
+                },
                 &mut apply,
             )?,
             LiveEventOutcome::Stop(LogSequenceNumber::new(8))
