@@ -7,6 +7,7 @@
 
 use std::future::Future;
 use std::io;
+use std::net::{AddrParseError, SocketAddr};
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -16,6 +17,16 @@ use serde::Serialize;
 use tokio::net::TcpListener;
 use veyra_runtime::{RuntimeSnapshot, RuntimeState, ServicePhase};
 use veyra_types::{GenerationId, LogSequenceNumber, ProjectionProgress};
+
+/// Portable default for the administrative listener.
+pub const DEFAULT_BIND: &str = "127.0.0.1:8080";
+
+/// Parses the optional `VEYRA_BIND` value without touching process-global state.
+///
+/// Keeping this pure makes deployment configuration deterministic and independently testable.
+pub fn parse_bind_address(value: Option<&str>) -> Result<SocketAddr, AddrParseError> {
+    value.unwrap_or(DEFAULT_BIND).parse()
+}
 
 /// Stable health response for operators and the Elixir client.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -44,7 +55,7 @@ pub fn router(runtime: RuntimeState) -> Router {
 
 /// Returns the initial fail-closed runtime state.
 ///
-/// Milestone 0 deliberately never pretends that a query projection exists.
+/// Bootstrap deliberately never pretends that a query projection exists.
 #[must_use]
 pub fn bootstrap_runtime() -> RuntimeState {
     RuntimeState::new(RuntimeSnapshot::starting(
@@ -103,6 +114,19 @@ mod tests {
 
     use super::*;
     use veyra_runtime::CannotProveReason;
+
+    #[test]
+    fn bind_address_defaults_and_validates_explicit_values() {
+        assert_eq!(
+            parse_bind_address(None),
+            Ok(SocketAddr::from(([127, 0, 0, 1], 8080)))
+        );
+        assert_eq!(
+            parse_bind_address(Some("0.0.0.0:9090")),
+            Ok(SocketAddr::from(([0, 0, 0, 0], 9090)))
+        );
+        assert!(parse_bind_address(Some("not-an-address")).is_err());
+    }
 
     #[tokio::test]
     async fn router_routes_liveness_request() {
