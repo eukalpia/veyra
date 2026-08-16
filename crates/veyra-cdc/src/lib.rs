@@ -8,6 +8,7 @@
 
 #[path = "journal_v2.rs"]
 mod journal;
+mod live;
 #[path = "pgoutput_v1.rs"]
 mod pgoutput;
 mod processor;
@@ -16,6 +17,10 @@ mod stream;
 mod transaction;
 
 pub use journal::{Journal, JournalError, ReplayDecision, ReplayGuard};
+pub use live::{
+    process_replication_event, run_pgwire, CdcProgress, LiveEventOutcome, LiveReplicationError,
+    LiveReplicationState, LiveRunSummary,
+};
 pub use pgoutput::{
     ColumnMetadata, PgOutputDecoder, PgOutputError, PgOutputMessage, RelationMetadata,
     ReplicaIdentity, TupleColumn, TupleData,
