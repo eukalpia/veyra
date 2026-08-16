@@ -1,0 +1,1 @@
+Run cargo fmt with the pinned stable toolchain, commit the result, and remove this marker and workflow.
