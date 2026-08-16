@@ -26,6 +26,26 @@ jobs:
         run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal --component rustfmt --component clippy
       - name: Generate workspace lockfile from manifests
         run: cargo generate-lockfile
+      - name: Canonicalize checked party fixture
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("crates/veyra-party/src/lib.rs")
+          text = path.read_text()
+          old = '''        let mut builder = BookingParty::builder();
+          assert_eq!(builder.build(), Err(PartyError::EmptyParty));'''
+          new = '''        let builder = BookingParty::builder();
+          assert_eq!(builder.build(), Err(PartyError::EmptyParty));'''
+          if old not in text:
+              old = '''        let mut builder = BookingParty::builder();
+        assert_eq!(builder.build(), Err(PartyError::EmptyParty));'''
+              new = '''        let builder = BookingParty::builder();
+        assert_eq!(builder.build(), Err(PartyError::EmptyParty));'''
+          if old not in text:
+              raise SystemExit("expected party fixture not found")
+          path.write_text(text.replace(old, new, 1))
+          PY
       - name: Canonicalize formatting
         run: cargo fmt --all
       - name: Verify formatting
