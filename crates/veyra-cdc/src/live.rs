@@ -247,6 +247,84 @@ where
     }
 }
 
+/// Durable, deterministic live replication state machine independent of network transport.
+pub struct LiveReplicationDriver {
+    processor: DurableTransactionProcessor,
+    checkpoint: AppliedCheckpoint,
+    state: LiveReplicationState,
+    events_seen: u64,
+    acknowledgements: u64,
+}
+
+impl LiveReplicationDriver {
+    /// Opens durable state and replays it up to the applied checkpoint before accepting events.
+    pub fn open<E, F>(
+        journal_path: impl AsRef<Path>,
+        checkpoint_path: impl AsRef<Path>,
+        apply: &mut F,
+    ) -> Result<Self, LiveReplicationError<E>>
+    where
+        F: FnMut(&TransactionBatch) -> Result<(), E>,
+    {
+        let mut processor =
+            DurableTransactionProcessor::open(journal_path).map_err(LiveReplicationError::Journal)?;
+        let mut checkpoint =
+            AppliedCheckpoint::open(checkpoint_path).map_err(LiveReplicationError::Checkpoint)?;
+        let resume_lsn = recover_checkpointed(&mut processor, &mut checkpoint, apply)?;
+        Ok(Self {
+            processor,
+            checkpoint,
+            state: LiveReplicationState::recovered(resume_lsn),
+            events_seen: 0,
+            acknowledgements: 0,
+        })
+    }
+
+    /// Returns the exact LSN from which an external replication transport must resume.
+    #[must_use]
+    pub const fn resume_lsn(&self) -> LogSequenceNumber {
+        self.state.progress.applied_lsn
+    }
+
+    /// Processes one transport event and records deterministic run counters.
+    pub fn process<E, F>(
+        &mut self,
+        event: ReplicationEvent,
+        apply: &mut F,
+    ) -> Result<LiveEventOutcome, LiveReplicationError<E>>
+    where
+        F: FnMut(&TransactionBatch) -> Result<(), E>,
+    {
+        self.events_seen = self.events_seen.saturating_add(1);
+        let outcome = process_replication_event(
+            &mut self.processor,
+            &mut self.checkpoint,
+            &mut self.state,
+            event,
+            apply,
+        )?;
+        if matches!(outcome, LiveEventOutcome::Acknowledge(_)) {
+            self.acknowledgements = self.acknowledgements.saturating_add(1);
+        }
+        Ok(outcome)
+    }
+
+    /// Returns the current deterministic run summary without consuming the driver.
+    #[must_use]
+    pub const fn summary(&self) -> LiveRunSummary {
+        LiveRunSummary {
+            events_seen: self.events_seen,
+            acknowledgements: self.acknowledgements,
+            progress: self.state.progress,
+        }
+    }
+}
+
+/// Connects the deterministic driver to the external PostgreSQL replication transport.
+///
+/// This thin adapter is covered by the PostgreSQL integration suite rather than the hermetic
+/// production-core coverage job.
+// coverage: external-postgres-transport
 pub async fn run_pgwire<E, F>(
     config: ReplicationConfig,
     journal_path: impl AsRef<Path>,
@@ -256,41 +334,27 @@ pub async fn run_pgwire<E, F>(
 where
     F: FnMut(&TransactionBatch) -> Result<(), E>,
 {
-    let mut processor =
-        DurableTransactionProcessor::open(journal_path).map_err(LiveReplicationError::Journal)?;
-    let mut checkpoint =
-        AppliedCheckpoint::open(checkpoint_path).map_err(LiveReplicationError::Checkpoint)?;
-    let resume_lsn = recover_checkpointed(&mut processor, &mut checkpoint, apply)?;
-    let mut state = LiveReplicationState::recovered(resume_lsn);
-    let config = config.with_start_lsn(Lsn::from_u64(resume_lsn.get()));
+    let mut driver = LiveReplicationDriver::open(journal_path, checkpoint_path, apply)?;
+    let config = config.with_start_lsn(Lsn::from_u64(driver.resume_lsn().get()));
     let mut client = ReplicationClient::connect(config)
         .await
         .map_err(LiveReplicationError::Transport)?;
-    let mut events_seen = 0_u64;
-    let mut acknowledgements = 0_u64;
 
     while let Some(event) = client
         .recv()
         .await
         .map_err(LiveReplicationError::Transport)?
     {
-        events_seen = events_seen.saturating_add(1);
-        match process_replication_event(&mut processor, &mut checkpoint, &mut state, event, apply)?
-        {
+        match driver.process(event, apply)? {
             LiveEventOutcome::Continue => {}
             LiveEventOutcome::Acknowledge(lsn) => {
                 client.update_applied_lsn(Lsn::from_u64(lsn.get()));
-                acknowledgements = acknowledgements.saturating_add(1);
             }
             LiveEventOutcome::Stop(_) => break,
         }
     }
 
-    Ok(LiveRunSummary {
-        events_seen,
-        acknowledgements,
-        progress: state.progress(),
-    })
+    Ok(driver.summary())
 }
 
 fn apply_checkpointed<E, F>(
@@ -618,7 +682,9 @@ mod tests {
                 &mut processor,
                 &mut checkpoint,
                 &mut state,
-                ReplicationEvent::StoppedAt { reached: Lsn::from_u64(30) },
+                ReplicationEvent::StoppedAt {
+                    reached: Lsn::from_u64(30)
+                },
                 &mut apply,
             ),
             Err(LiveReplicationError::StoppedMidTransaction(lsn)) if lsn.get() == 30
