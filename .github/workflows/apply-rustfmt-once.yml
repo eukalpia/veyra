@@ -31,7 +31,6 @@ jobs:
           set -euo pipefail
           cargo fmt --all
           git rm .github/rustfmt-once/READY
-          rmdir .github/rustfmt-once
           git rm .github/workflows/apply-rustfmt-once.yml
           git config user.name "Veyra CI"
           git config user.email "120781817+eukalpia@users.noreply.github.com"
