@@ -320,9 +320,9 @@ impl LiveReplicationDriver {
     }
 }
 
-/// Connects the deterministic driver to the external PostgreSQL replication transport.
+/// Connects the deterministic driver to the external `PostgreSQL` replication transport.
 ///
-/// This thin adapter is covered by the PostgreSQL integration suite rather than the hermetic
+/// This thin adapter is covered by the `PostgreSQL` integration suite rather than the hermetic
 /// production-core coverage job.
 // coverage: external-postgres-transport
 pub async fn run_pgwire<E, F>(
