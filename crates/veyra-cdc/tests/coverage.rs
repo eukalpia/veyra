@@ -148,10 +148,7 @@ fn journal_boundaries_cover_debug_sources_and_corruption() {
         let mut journal = Journal::open(&journal_path).unwrap_or_else(|_| unreachable!());
         assert_eq!(journal.highest_commit_lsn(), LogSequenceNumber::ZERO);
         assert!(matches!(journal.append(&first), Ok(ReplayDecision::Apply)));
-        assert_eq!(
-            journal.highest_commit_lsn(),
-            LogSequenceNumber::new(20)
-        );
+        assert_eq!(journal.highest_commit_lsn(), LogSequenceNumber::new(20));
         assert!(matches!(
             journal.append(&first),
             Ok(ReplayDecision::Duplicate)
@@ -285,7 +282,10 @@ fn processor_live_and_stream_public_boundaries_are_exercised() {
             columns: Vec::new(),
         }))
         .unwrap_or_else(|_| unreachable!());
-    assert_eq!(stream.relation(77).map(|relation| relation.name.as_str()), Some("inventory"));
+    assert_eq!(
+        stream.relation(77).map(|relation| relation.name.as_str()),
+        Some("inventory")
+    );
     stream
         .consume(PgOutputMessage::Begin {
             final_lsn: LogSequenceNumber::new(9),
