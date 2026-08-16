@@ -5,7 +5,10 @@ use veyra_party::{
 use veyra_pricing::{MoneyMicros, PricingError};
 use veyra_rule_compiler::{RULE_SCHEMA_V1, compile};
 use veyra_rules::Rule;
-use veyra_solver::{HARD_MAX_ROOMS, RoomOffer, SolverConfig, SolverError, solve};
+use veyra_solver::{
+    HARD_MAX_ROOMS, HARD_MAX_SOLUTIONS, HARD_MAX_STATES, RoomOffer, SolverConfig, SolverError,
+    solve,
+};
 
 fn date() -> CivilDate {
     CivilDate::new(2026, 9, 21).unwrap_or_else(|_| unreachable!())
@@ -83,18 +86,31 @@ fn input_bounds_fail_closed() {
         solve(&p, date(), &rooms, SolverConfig::default()),
         Err(SolverError::InvalidRoomCount(_))
     ));
-    assert_eq!(
-        solve(
-            &p,
-            date(),
-            &[room(1, 1)],
-            SolverConfig {
-                max_states: 0,
-                max_solutions: 1
-            }
-        ),
-        Err(SolverError::InvalidBudget)
-    );
+
+    for config in [
+        SolverConfig {
+            max_states: 0,
+            max_solutions: 1,
+        },
+        SolverConfig {
+            max_states: HARD_MAX_STATES + 1,
+            max_solutions: 1,
+        },
+        SolverConfig {
+            max_states: 1,
+            max_solutions: 0,
+        },
+        SolverConfig {
+            max_states: 1,
+            max_solutions: HARD_MAX_SOLUTIONS + 1,
+        },
+    ] {
+        assert_eq!(
+            solve(&p, date(), &[room(1, 1)], config),
+            Err(SolverError::InvalidBudget)
+        );
+    }
+
     let mut bad_age = room(1, 1);
     bad_age.adult_age = 0;
     assert_eq!(
