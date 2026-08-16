@@ -144,17 +144,32 @@ mod tests {
 
     #[test]
     fn generation_validates_segment_identity_and_ranges() {
-        let gen = generation(2, 10, 20);
-        assert_eq!(gen.id().get(), 2);
-        assert_eq!(gen.start_lsn().get(), 10);
-        assert_eq!(gen.end_lsn().get(), 20);
-        assert_eq!(gen.segment_count(), 1);
-        assert!(gen.segment(SegmentType::Availability).is_some());
-        assert!(gen.segment(SegmentType::Pricing).is_none());
+        let generation = generation(2, 10, 20);
+        assert_eq!(generation.id().get(), 2);
+        assert_eq!(generation.start_lsn().get(), 10);
+        assert_eq!(generation.end_lsn().get(), 20);
+        assert_eq!(generation.segment_count(), 1);
+        assert!(generation.segment(SegmentType::Availability).is_some());
+        assert!(generation.segment(SegmentType::Pricing).is_none());
 
-        assert_eq!(Generation::try_new(GenerationId::UNPUBLISHED, 0.into(), 0.into(), [segment(SegmentType::Availability, 0, 0, 0)]).err(), Some(StorageError::UnpublishedGeneration));
-        assert_eq!(Generation::try_new(GenerationId::new(1), LogSequenceNumber::new(2), LogSequenceNumber::new(1), [segment(SegmentType::Availability, 1, 2, 1)]).err(), Some(StorageError::LsnRangeReversed));
-        assert_eq!(Generation::try_new(GenerationId::new(1), 0.into(), 0.into(), std::iter::empty()).err(), Some(StorageError::EmptyGeneration));
+        assert_eq!(Generation::try_new(
+            GenerationId::UNPUBLISHED,
+            LogSequenceNumber::ZERO,
+            LogSequenceNumber::ZERO,
+            [segment(SegmentType::Availability, 0, 0, 0)],
+        ).err(), Some(StorageError::UnpublishedGeneration));
+        assert_eq!(Generation::try_new(
+            GenerationId::new(1),
+            LogSequenceNumber::new(2),
+            LogSequenceNumber::new(1),
+            [segment(SegmentType::Availability, 1, 2, 1)],
+        ).err(), Some(StorageError::LsnRangeReversed));
+        assert_eq!(Generation::try_new(
+            GenerationId::new(1),
+            LogSequenceNumber::ZERO,
+            LogSequenceNumber::ZERO,
+            std::iter::empty(),
+        ).err(), Some(StorageError::EmptyGeneration));
     }
 
     #[test]
@@ -207,9 +222,4 @@ mod tests {
         assert!(matches!(store.publish(generation(6, 1, 40)), Err(StorageError::PublishedLsnRegressed { .. })));
         assert_eq!(store.load().id().get(), 5);
     }
-}
-
-#[cfg(test)]
-impl From<u64> for LogSequenceNumber {
-    fn from(value: u64) -> Self { Self::new(value) }
 }
