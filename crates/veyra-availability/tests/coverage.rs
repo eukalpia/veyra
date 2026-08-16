@@ -3,6 +3,17 @@ use veyra_availability::{AvailabilityError, AvailabilityIndex};
 #[test]
 fn dense_bitmap_cross_word_transitions_are_exact() {
     let mut index = AvailabilityIndex::new(100, 3, 130).unwrap_or_else(|_| unreachable!());
+    assert_eq!(index.start_day(), 100);
+    assert_eq!(index.day_count(), 3);
+    assert_eq!(index.room_count(), 130);
+
+    let empty = index
+        .available_for_stay(100, 101)
+        .unwrap_or_else(|_| unreachable!());
+    assert!(empty.is_empty());
+    assert_eq!(empty.len(), 0);
+    assert!(empty.room_ids().is_empty());
+
     for room in [0, 63, 64, 65, 127, 128, 129] {
         for day in 100..103 {
             index
@@ -17,6 +28,7 @@ fn dense_bitmap_cross_word_transitions_are_exact() {
     let two_nights = index
         .available_for_stay(100, 102)
         .unwrap_or_else(|_| unreachable!());
+    assert!(!two_nights.is_empty());
     assert_eq!(two_nights.len(), 6);
     assert!(!two_nights.contains(65));
     assert!(!two_nights.contains(130));
@@ -54,6 +66,10 @@ fn dimensions_ranges_and_display_fail_closed() {
 
     let mut index = AvailabilityIndex::new(10, 2, 2).unwrap_or_else(|_| unreachable!());
     assert_eq!(
+        index.set_available(9, 0, true),
+        Err(AvailabilityError::DayOutOfRange(9))
+    );
+    assert_eq!(
         index.set_available(12, 0, true),
         Err(AvailabilityError::DayOutOfRange(12))
     );
@@ -62,12 +78,24 @@ fn dimensions_ranges_and_display_fail_closed() {
         Err(AvailabilityError::RoomOutOfRange(2))
     );
     assert_eq!(
+        index.available_for_stay(10, 10),
+        Err(AvailabilityError::InvalidStayRange)
+    );
+    assert_eq!(
         index.available_for_stay(11, 10),
         Err(AvailabilityError::InvalidStayRange)
     );
     assert_eq!(
         index.available_for_stay(10, 101),
         Err(AvailabilityError::StayTooLong(91))
+    );
+    assert_eq!(
+        index.available_for_stay(9, 10),
+        Err(AvailabilityError::DayOutOfRange(9))
+    );
+    assert_eq!(
+        index.available_for_stay(10, 13),
+        Err(AvailabilityError::DayOutOfRange(12))
     );
 
     for error in [
