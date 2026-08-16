@@ -1,1 +1,1 @@
-Apply checked age and Rule IR cardinality conversions, run pinned strict Clippy, and commit only when the complete workspace passes.
+Apply checked age, Rule IR cardinality and pricing day arithmetic conversions, run pinned strict Clippy, and commit only when the complete workspace passes.
