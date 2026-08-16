@@ -9,10 +9,10 @@
 use core::fmt;
 use veyra_availability::{AvailabilityError, AvailabilityIndex};
 use veyra_occupancy::{validate_room, OccupancyError};
-use veyra_party::{BookingParty, CivilDate, TravelerId};
+use veyra_party::{BookingParty, CivilDate};
 use veyra_pricing::{MoneyMicros, OccupancyAdjustment, PriceVector, PricingError};
 use veyra_ranking::{
-    top_k, RankCandidate, RankingError, RankingProfile, RankedCandidate, MAX_TOP_K,
+    top_k, RankCandidate, RankedCandidate, RankingError, RankingProfile, MAX_TOP_K,
 };
 use veyra_restrictions::{CompiledRestrictions, RestrictionError};
 use veyra_rule_compiler::CompiledRule;
@@ -81,7 +81,7 @@ impl SearchEngine {
         let occupant_ids = query
             .party
             .travelers()
-            .map(|traveler| traveler.id())
+            .map(veyra_party::Traveler::id)
             .collect::<Vec<_>>();
         if occupant_ids.len() > MAX_QUERY_PARTY {
             return Err(QueryError::PartyTooLarge(occupant_ids.len()));
@@ -303,7 +303,7 @@ impl std::error::Error for QueryError {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use veyra_party::{AgeEvidence, Traveler};
+    use veyra_party::{AgeEvidence, Traveler, TravelerId};
     use veyra_pricing::MoneyMicros;
     use veyra_ranking::RankingKind;
     use veyra_restrictions::{compile as compile_restrictions, RestrictionRule, RESTRICTION_SCHEMA_V1};
@@ -324,12 +324,19 @@ mod tests {
             Traveler::new(TravelerId::new(1), AgeEvidence::AgeAtCheckIn(30), false),
             Traveler::new(TravelerId::new(2), AgeEvidence::AgeAtCheckIn(28), false),
         ] {
-            builder.add_traveler(traveler).unwrap_or_else(|_| unreachable!());
+            builder
+                .add_traveler(traveler)
+                .unwrap_or_else(|_| unreachable!());
         }
         builder.build().unwrap_or_else(|_| unreachable!())
     }
 
-    fn room(room_id: u32, property_id: u32, destination_id: u32, nightly: i64) -> RoomDocument {
+    fn room(
+        room_id: u32,
+        property_id: u32,
+        destination_id: u32,
+        nightly: i64,
+    ) -> RoomDocument {
         RoomDocument {
             room_id,
             property_id,
@@ -339,7 +346,10 @@ mod tests {
                 RULE_SCHEMA_V1,
                 &Rule::And(vec![
                     Rule::Capacity { min: 1, max: 4 },
-                    Rule::RequireAdult { adult_age: 18, min_adults: 1 },
+                    Rule::RequireAdult {
+                        adult_age: 18,
+                        min_adults: 1,
+                    },
                 ]),
             )
             .unwrap_or_else(|_| unreachable!()),
@@ -362,8 +372,8 @@ mod tests {
     }
 
     fn engine() -> SearchEngine {
-        let mut availability = AvailabilityIndex::new(10, 5, 3)
-            .unwrap_or_else(|_| unreachable!());
+        let mut availability =
+            AvailabilityIndex::new(10, 5, 3).unwrap_or_else(|_| unreachable!());
         for room_id in 0..3 {
             for day in 10..15 {
                 availability
@@ -373,7 +383,11 @@ mod tests {
         }
         SearchEngine::try_new(
             availability,
-            vec![room(0, 100, 1, 100), room(1, 101, 1, 80), room(2, 200, 2, 50)],
+            vec![
+                room(0, 100, 1, 100),
+                room(1, 101, 1, 80),
+                room(2, 200, 2, 50),
+            ],
         )
         .unwrap_or_else(|_| unreachable!())
     }
@@ -424,15 +438,19 @@ mod tests {
             .search(&query(&party, None))
             .unwrap_or_else(|_| unreachable!());
         assert_eq!(
-            result.hits.iter().map(|hit| hit.room_id).collect::<Vec<_>>(),
+            result
+                .hits
+                .iter()
+                .map(|hit| hit.room_id)
+                .collect::<Vec<_>>(),
             vec![1, 0]
         );
     }
 
     #[test]
     fn catalog_and_query_bounds_fail_closed() {
-        let availability = AvailabilityIndex::new(0, 1, 1)
-            .unwrap_or_else(|_| unreachable!());
+        let availability =
+            AvailabilityIndex::new(0, 1, 1).unwrap_or_else(|_| unreachable!());
         assert!(matches!(
             SearchEngine::try_new(availability, Vec::new()),
             Err(QueryError::RoomDocumentCountMismatch { .. })
@@ -443,15 +461,18 @@ mod tests {
         assert_eq!(engine().search(&invalid), Err(QueryError::InvalidLimit(0)));
         let mut invalid = query(&party, None);
         invalid.check_out_day = invalid.check_in_day;
-        assert_eq!(engine().search(&invalid), Err(QueryError::InvalidStayRange));
-        let mut invalid = query(&party, Some(MoneyMicros::signed(-1)));
+        assert_eq!(
+            engine().search(&invalid),
+            Err(QueryError::InvalidStayRange)
+        );
+        let invalid = query(&party, Some(MoneyMicros::signed(-1)));
         assert_eq!(engine().search(&invalid), Err(QueryError::NegativeBudget));
     }
 
     #[test]
     fn missing_price_projection_fails_whole_query_closed() {
-        let mut availability = AvailabilityIndex::new(10, 2, 1)
-            .unwrap_or_else(|_| unreachable!());
+        let mut availability =
+            AvailabilityIndex::new(10, 2, 1).unwrap_or_else(|_| unreachable!());
         for day in 10..12 {
             availability
                 .set_available(day, 0, true)
