@@ -5,6 +5,8 @@ members = [
     "crates/veyra-segment",
     "crates/veyra-storage",
     "crates/veyra-availability",
+    "crates/veyra-party",
+    "crates/veyra-rules",
     "crates/veyra-runtime",
     "crates/veyra-server",
 ]
