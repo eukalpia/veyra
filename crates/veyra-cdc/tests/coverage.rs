@@ -8,8 +8,9 @@ use pgwire_replication::{Lsn, ReplicationEvent};
 use veyra_cdc::{
     AppliedCheckpoint, ChangeKind, CheckpointApplyError, CheckpointError,
     DurableTransactionProcessor, Journal, JournalError, LiveEventOutcome, LiveReplicationError,
-    LiveReplicationState, PgOutputError, PgOutputMessage, ProcessorError, ReplayDecision,
-    RowChange, StreamError, TransactionBatch, TransactionBuildError, TransactionValidationError,
+    LiveReplicationState, PgOutputError, PgOutputMessage, ProcessorError, RelationMetadata,
+    ReplayDecision, ReplicaIdentity, RowChange, StreamError, TransactionBatch,
+    TransactionBuildError, TransactionStream, TransactionValidationError,
     process_replication_event, recover_checkpointed,
 };
 use veyra_types::LogSequenceNumber;
@@ -145,7 +146,12 @@ fn journal_boundaries_cover_debug_sources_and_corruption() {
     let first = batch(20, 21, 2);
     {
         let mut journal = Journal::open(&journal_path).unwrap_or_else(|_| unreachable!());
+        assert_eq!(journal.highest_commit_lsn(), LogSequenceNumber::ZERO);
         assert!(matches!(journal.append(&first), Ok(ReplayDecision::Apply)));
+        assert_eq!(
+            journal.highest_commit_lsn(),
+            LogSequenceNumber::new(20)
+        );
         assert!(matches!(
             journal.append(&first),
             Ok(ReplayDecision::Duplicate)
@@ -237,6 +243,10 @@ fn processor_live_and_stream_public_boundaries_are_exercised() {
     let checkpoint_path = path("checkpoint-live");
     let mut processor =
         DurableTransactionProcessor::open(&journal_path).unwrap_or_else(|_| unreachable!());
+    assert_eq!(
+        processor.highest_durable_commit_lsn(),
+        LogSequenceNumber::ZERO
+    );
     assert!(format!("{processor:?}").contains("DurableTransactionProcessor"));
     for error in [
         ProcessorError::<ApplyFailure>::Decode(PgOutputError::UnsupportedMessage(0xff)),
@@ -252,11 +262,38 @@ fn processor_live_and_stream_public_boundaries_are_exercised() {
     ] {
         assert!(!error.to_string().is_empty());
     }
+    let converted: StreamError = TransactionBuildError::CommitWithoutBegin.into();
+    assert_eq!(
+        converted,
+        StreamError::Transaction(TransactionBuildError::CommitWithoutBegin)
+    );
     assert!(
         !TransactionValidationError::EndBeforeCommit
             .to_string()
             .is_empty()
     );
+
+    let mut stream = TransactionStream::new();
+    assert!(!stream.transaction_open());
+    assert!(stream.relation(77).is_none());
+    stream
+        .consume(PgOutputMessage::Relation(RelationMetadata {
+            relation_id: 77,
+            namespace: "public".to_owned(),
+            name: "inventory".to_owned(),
+            replica_identity: ReplicaIdentity::Default,
+            columns: Vec::new(),
+        }))
+        .unwrap_or_else(|_| unreachable!());
+    assert_eq!(stream.relation(77).map(|relation| relation.name.as_str()), Some("inventory"));
+    stream
+        .consume(PgOutputMessage::Begin {
+            final_lsn: LogSequenceNumber::new(9),
+            commit_timestamp_micros: 0,
+            xid: 1,
+        })
+        .unwrap_or_else(|_| unreachable!());
+    assert!(stream.transaction_open());
 
     let mut checkpoint =
         AppliedCheckpoint::open(&checkpoint_path).unwrap_or_else(|_| unreachable!());
@@ -301,4 +338,19 @@ fn processor_live_and_stream_public_boundaries_are_exercised() {
     ));
     let _ = fs::remove_file(journal_path);
     let _ = fs::remove_file(checkpoint_path);
+}
+
+#[test]
+fn missing_parent_directories_return_typed_io_errors() {
+    let missing_root = path("missing-parent");
+    let journal_path = missing_root.join("journal.bin");
+    let checkpoint_path = missing_root.join("checkpoint.bin");
+
+    let journal_error = Journal::open(&journal_path).unwrap_err();
+    assert!(matches!(journal_error, JournalError::Io(_)));
+    assert!(journal_error.source().is_some());
+
+    let checkpoint_error = AppliedCheckpoint::open(&checkpoint_path).unwrap_err();
+    assert!(matches!(checkpoint_error, CheckpointError::Io(_)));
+    assert!(checkpoint_error.source().is_some());
 }
