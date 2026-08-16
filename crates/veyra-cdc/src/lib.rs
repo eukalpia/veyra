@@ -3,13 +3,14 @@
 //! `PostgreSQL` logical replication primitives for Veyra.
 //!
 //! This crate owns transaction-boundary preservation, strict `pgoutput` decoding,
-//! and crash-safe durable transaction replay state. It deliberately does not own
-//! booking mutations or query projections.
+//! crash-safe durable transaction replay, and the journal-before-apply acknowledgement boundary.
+//! It deliberately does not own booking mutations or query projections.
 
 #[path = "journal_v2.rs"]
 mod journal;
 #[path = "pgoutput_v1.rs"]
 mod pgoutput;
+mod processor;
 mod stream;
 #[path = "transaction_v1.rs"]
 mod transaction;
@@ -19,6 +20,7 @@ pub use pgoutput::{
     ColumnMetadata, PgOutputDecoder, PgOutputError, PgOutputMessage, RelationMetadata,
     ReplicaIdentity, TupleColumn, TupleData,
 };
+pub use processor::{DurableTransactionProcessor, ProcessingOutcome, ProcessorError};
 pub use stream::{StreamError, TransactionStream};
 pub use transaction::{
     ChangeKind, RowChange, TransactionBatch, TransactionBuildError, TransactionBuilder,
