@@ -24,3 +24,13 @@ pub use transaction::{
     ChangeKind, RowChange, TransactionBatch, TransactionBuildError, TransactionBuilder,
     TransactionValidationError,
 };
+
+#[cfg(test)]
+impl PartialEq for JournalError {
+    fn eq(&self, other: &Self) -> bool {
+        core::mem::discriminant(self) == core::mem::discriminant(other)
+    }
+}
+
+#[cfg(test)]
+impl Eq for JournalError {}
