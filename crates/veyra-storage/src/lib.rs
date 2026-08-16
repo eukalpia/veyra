@@ -162,7 +162,7 @@ mod tests {
             GenerationId::new(1),
             LogSequenceNumber::new(2),
             LogSequenceNumber::new(1),
-            [segment(SegmentType::Availability, 1, 2, 1)],
+            [segment(SegmentType::Availability, 1, 1, 1)],
         ).err(), Some(StorageError::LsnRangeReversed));
         assert_eq!(Generation::try_new(
             GenerationId::new(1),
