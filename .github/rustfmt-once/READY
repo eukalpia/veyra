@@ -1,1 +1,1 @@
-Run cargo fmt with the pinned stable toolchain, commit the result, and remove this marker and workflow.
+Run cargo fmt with Rust 1.97.1, commit the exact result, then remove this marker and the one-shot workflow.
