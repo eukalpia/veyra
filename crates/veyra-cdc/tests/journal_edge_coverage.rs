@@ -208,3 +208,12 @@ fn transaction_semantics_are_validated_after_decode() {
     let _ = fs::remove_file(source);
     let _ = fs::remove_file(invalid);
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn failed_durable_write_is_retried_instead_of_misclassified_as_duplicate() {
+    let mut journal = Journal::open("/dev/full").unwrap_or_else(|_| unreachable!());
+
+    assert!(matches!(journal.append(&batch()), Err(JournalError::Io(_))));
+    assert!(matches!(journal.append(&batch()), Err(JournalError::Io(_))));
+}
