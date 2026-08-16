@@ -30,7 +30,10 @@ fn identifiers_dates_accessors_and_age_fail_closed() {
     assert_eq!(group_id.get(), 9);
 
     let check_in = date(2026, 9, 21);
-    assert_eq!((check_in.year(), check_in.month(), check_in.day()), (2026, 9, 21));
+    assert_eq!(
+        (check_in.year(), check_in.month(), check_in.day()),
+        (2026, 9, 21)
+    );
     assert_eq!(date(2000, 2, 29).age_on(check_in), Ok(26));
     assert_eq!(
         date(1800, 1, 1).age_on(check_in),
@@ -40,10 +43,7 @@ fn identifiers_dates_accessors_and_age_fail_closed() {
     let accessible = traveler(1);
     assert!(accessible.accessibility_required());
     assert_eq!(accessible.id(), TravelerId::new(1));
-    assert_eq!(
-        accessible.age_evidence().age_at(check_in),
-        Ok(30)
-    );
+    assert_eq!(accessible.age_evidence().age_at(check_in), Ok(30));
 
     let mut builder = BookingParty::builder();
     builder
