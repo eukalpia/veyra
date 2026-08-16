@@ -25,20 +25,39 @@ jobs:
           fetch-depth: 0
       - name: Install pinned toolchain
         run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
-      - name: Apply minimal conversion fix and verify
+      - name: Apply minimal conversion fixes and verify
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
 
-          path = Path("crates/veyra-party/src/lib.rs")
-          text = path.read_text()
-          old = "        Ok(years as u16)\n"
-          new = "        u16::try_from(years).map_err(|_| PartyError::AgeOutOfRange)\n"
-          if text.count(old) != 1:
-              raise SystemExit("expected exactly one age conversion site")
-          path.write_text(text.replace(old, new))
+          replacements = {
+              Path("crates/veyra-party/src/lib.rs"): [
+                  (
+                      "        Ok(years as u16)\n",
+                      "        u16::try_from(years).map_err(|_| PartyError::AgeOutOfRange)\n",
+                  ),
+              ],
+              Path("crates/veyra-rules/src/lib.rs"): [
+                  (
+                      "                let count = context.occupants.len() as u16;\n",
+                      "                let count = u16::try_from(context.occupants.len())\n                    .map_err(|_| RuleError::CountOverflow)?;\n",
+                  ),
+                  (
+                      "                let count = context.count_age_range(*min_age, *max_age) as u16;\n",
+                      "                let count = u16::try_from(\n                    context.count_age_range(*min_age, *max_age),\n                )\n                .map_err(|_| RuleError::CountOverflow)?;\n",
+                  ),
+              ],
+          }
+
+          for path, items in replacements.items():
+              text = path.read_text()
+              for old, new in items:
+                  if text.count(old) != 1:
+                      raise SystemExit(f"expected exactly one conversion site in {path}: {old!r}")
+                  text = text.replace(old, new)
+              path.write_text(text)
           PY
           cargo fmt --all
           cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
