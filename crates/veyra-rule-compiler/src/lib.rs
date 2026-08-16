@@ -32,9 +32,15 @@ enum Op {
     RequireGuardianForMinors {
         minor_below_age: u16,
     },
-    And(u16),
-    Or(u16),
+    And(usize),
+    Or(usize),
     Not,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Reduction {
+    And,
+    Or,
 }
 
 /// Versioned, validated bytecode executable by the occupancy hot path.
@@ -66,9 +72,12 @@ impl CompiledRule {
         for op in &self.ops {
             match *op {
                 Op::Capacity { min, max } => {
-                    let count = u16::try_from(context.occupants().len())
-                        .map_err(|_| CompileError::RuntimeInvariant)?;
-                    push(&mut stack, &mut stack_len, (min..=max).contains(&count))?;
+                    let count = context.occupants().len();
+                    push(
+                        &mut stack,
+                        &mut stack_len,
+                        (usize::from(min)..=usize::from(max)).contains(&count),
+                    )?;
                 }
                 Op::AgeRangeCount {
                     min_age,
@@ -76,12 +85,11 @@ impl CompiledRule {
                     min_count,
                     max_count,
                 } => {
-                    let count = u16::try_from(context.count_age_range(min_age, max_age))
-                        .map_err(|_| CompileError::RuntimeInvariant)?;
+                    let count = context.count_age_range(min_age, max_age);
                     push(
                         &mut stack,
                         &mut stack_len,
-                        (min_count..=max_count).contains(&count),
+                        (usize::from(min_count)..=usize::from(max_count)).contains(&count),
                     )?;
                 }
                 Op::RequireAdult {
@@ -110,14 +118,10 @@ impl CompiledRule {
                     push(&mut stack, &mut stack_len, !value)?;
                 }
                 Op::And(count) => {
-                    reduce(&mut stack, &mut stack_len, count, true, |left, right| {
-                        left && right
-                    })?;
+                    reduce(&mut stack, &mut stack_len, count, Reduction::And)?;
                 }
                 Op::Or(count) => {
-                    reduce(&mut stack, &mut stack_len, count, false, |left, right| {
-                        left || right
-                    })?;
+                    reduce(&mut stack, &mut stack_len, count, Reduction::Or)?;
                 }
             }
         }
@@ -137,9 +141,6 @@ pub fn compile(schema_version: u16, rule: &Rule) -> Result<CompiledRule, Compile
     rule.validate().map_err(CompileError::InvalidRule)?;
     let mut ops = Vec::new();
     compile_inner(rule, &mut ops)?;
-    if ops.is_empty() || ops.len() > MAX_OPS {
-        return Err(CompileError::TooManyOps(ops.len()));
-    }
     Ok(CompiledRule {
         schema_version,
         ops,
@@ -147,61 +148,68 @@ pub fn compile(schema_version: u16, rule: &Rule) -> Result<CompiledRule, Compile
 }
 
 fn compile_inner(rule: &Rule, ops: &mut Vec<Op>) -> Result<(), CompileError> {
-    if ops.len() >= MAX_OPS {
-        return Err(CompileError::TooManyOps(ops.len().saturating_add(1)));
-    }
     match rule {
-        Rule::Capacity { min, max } => ops.push(Op::Capacity {
-            min: *min,
-            max: *max,
-        }),
+        Rule::Capacity { min, max } => push_op(
+            ops,
+            Op::Capacity {
+                min: *min,
+                max: *max,
+            },
+        ),
         Rule::AgeRangeCount {
             min_age,
             max_age,
             min_count,
             max_count,
-        } => ops.push(Op::AgeRangeCount {
-            min_age: *min_age,
-            max_age: *max_age,
-            min_count: *min_count,
-            max_count: *max_count,
-        }),
+        } => push_op(
+            ops,
+            Op::AgeRangeCount {
+                min_age: *min_age,
+                max_age: *max_age,
+                min_count: *min_count,
+                max_count: *max_count,
+            },
+        ),
         Rule::RequireAdult {
             adult_age,
             min_adults,
-        } => ops.push(Op::RequireAdult {
-            adult_age: *adult_age,
-            min_adults: *min_adults,
-        }),
-        Rule::RequireGuardianForMinors { minor_below_age } => {
-            ops.push(Op::RequireGuardianForMinors {
+        } => push_op(
+            ops,
+            Op::RequireAdult {
+                adult_age: *adult_age,
+                min_adults: *min_adults,
+            },
+        ),
+        Rule::RequireGuardianForMinors { minor_below_age } => push_op(
+            ops,
+            Op::RequireGuardianForMinors {
                 minor_below_age: *minor_below_age,
-            });
-        }
+            },
+        ),
         Rule::And(children) => {
             for child in children {
                 compile_inner(child, ops)?;
             }
-            let count = u16::try_from(children.len())
-                .map_err(|_| CompileError::TooManyChildren(children.len()))?;
-            ops.push(Op::And(count));
+            push_op(ops, Op::And(children.len()))
         }
         Rule::Or(children) => {
             for child in children {
                 compile_inner(child, ops)?;
             }
-            let count = u16::try_from(children.len())
-                .map_err(|_| CompileError::TooManyChildren(children.len()))?;
-            ops.push(Op::Or(count));
+            push_op(ops, Op::Or(children.len()))
         }
         Rule::Not(child) => {
             compile_inner(child, ops)?;
-            ops.push(Op::Not);
+            push_op(ops, Op::Not)
         }
     }
-    if ops.len() > MAX_OPS {
-        return Err(CompileError::TooManyOps(ops.len()));
+}
+
+fn push_op(ops: &mut Vec<Op>, op: Op) -> Result<(), CompileError> {
+    if ops.len() == MAX_OPS {
+        return Err(CompileError::TooManyOps(MAX_OPS + 1));
     }
+    ops.push(op);
     Ok(())
 }
 
@@ -210,43 +218,38 @@ fn push(
     stack_len: &mut usize,
     value: bool,
 ) -> Result<(), CompileError> {
-    let slot = stack
-        .get_mut(*stack_len)
-        .ok_or(CompileError::RuntimeInvariant)?;
-    *slot = value;
-    *stack_len = stack_len
-        .checked_add(1)
-        .ok_or(CompileError::RuntimeInvariant)?;
+    if *stack_len == MAX_OPS {
+        return Err(CompileError::RuntimeInvariant);
+    }
+    stack[*stack_len] = value;
+    *stack_len += 1;
     Ok(())
 }
 
 fn pop(stack: &[bool; MAX_OPS], stack_len: &mut usize) -> Result<bool, CompileError> {
-    *stack_len = stack_len
-        .checked_sub(1)
-        .ok_or(CompileError::RuntimeInvariant)?;
-    stack
-        .get(*stack_len)
-        .copied()
-        .ok_or(CompileError::RuntimeInvariant)
+    if *stack_len == 0 {
+        return Err(CompileError::RuntimeInvariant);
+    }
+    *stack_len -= 1;
+    Ok(stack[*stack_len])
 }
 
-fn reduce<F>(
+fn reduce(
     stack: &mut [bool; MAX_OPS],
     stack_len: &mut usize,
-    count: u16,
-    identity: bool,
-    combine: F,
-) -> Result<(), CompileError>
-where
-    F: Fn(bool, bool) -> bool,
-{
-    let count = usize::from(count);
+    count: usize,
+    reduction: Reduction,
+) -> Result<(), CompileError> {
     if count == 0 || count > *stack_len {
         return Err(CompileError::RuntimeInvariant);
     }
-    let mut value = identity;
+    let mut value = matches!(reduction, Reduction::And);
     for _ in 0..count {
-        value = combine(value, pop(stack, stack_len)?);
+        let next = pop(stack, stack_len)?;
+        value = match reduction {
+            Reduction::And => value && next,
+            Reduction::Or => value || next,
+        };
     }
     push(stack, stack_len, value)
 }
@@ -256,7 +259,6 @@ pub enum CompileError {
     UnsupportedSchema(u16),
     InvalidRule(RuleError),
     TooManyOps(usize),
-    TooManyChildren(usize),
     RuntimeInvariant,
 }
 
@@ -280,6 +282,10 @@ mod tests {
             age,
             authorized_guardian_present: guardian,
         }
+    }
+
+    fn context() -> OccupancyContext {
+        OccupancyContext::new(vec![occupant(1, 30, false)]).unwrap_or_else(|_| unreachable!())
     }
 
     fn composite_rule() -> Rule {
@@ -331,8 +337,7 @@ mod tests {
 
     #[test]
     fn boolean_bytecode_matches_reference() {
-        let context =
-            OccupancyContext::new(vec![occupant(1, 30, false)]).unwrap_or_else(|_| unreachable!());
+        let context = context();
         for rule in [
             Rule::And(vec![
                 Rule::Capacity { min: 1, max: 1 },
@@ -349,6 +354,63 @@ mod tests {
                 compiled.evaluate(&context),
                 rule.evaluate(&context).map_err(CompileError::InvalidRule)
             );
+        }
+    }
+
+    #[test]
+    fn malformed_bytecode_and_stack_bounds_fail_closed() {
+        let context = context();
+        for compiled in [
+            CompiledRule {
+                schema_version: 9,
+                ops: vec![Op::Capacity { min: 1, max: 1 }],
+            },
+            CompiledRule {
+                schema_version: RULE_SCHEMA_V1,
+                ops: Vec::new(),
+            },
+            CompiledRule {
+                schema_version: RULE_SCHEMA_V1,
+                ops: vec![Op::Not],
+            },
+            CompiledRule {
+                schema_version: RULE_SCHEMA_V1,
+                ops: vec![Op::And(0)],
+            },
+            CompiledRule {
+                schema_version: RULE_SCHEMA_V1,
+                ops: vec![Op::Capacity { min: 1, max: 1 }, Op::Or(2)],
+            },
+            CompiledRule {
+                schema_version: RULE_SCHEMA_V1,
+                ops: vec![
+                    Op::Capacity { min: 1, max: 1 },
+                    Op::Capacity { min: 1, max: 1 },
+                ],
+            },
+            CompiledRule {
+                schema_version: RULE_SCHEMA_V1,
+                ops: vec![Op::Capacity { min: 1, max: 1 }; MAX_OPS + 1],
+            },
+        ] {
+            assert!(compiled.evaluate(&context).is_err());
+        }
+    }
+
+    #[test]
+    fn compiler_capacity_guard_and_error_surface_are_explicit() {
+        let mut ops = vec![Op::Not; MAX_OPS];
+        assert_eq!(
+            compile_inner(&Rule::Capacity { min: 1, max: 1 }, &mut ops),
+            Err(CompileError::TooManyOps(MAX_OPS + 1))
+        );
+        for error in [
+            CompileError::UnsupportedSchema(2),
+            CompileError::InvalidRule(RuleError::InvalidCountRange),
+            CompileError::TooManyOps(MAX_OPS + 1),
+            CompileError::RuntimeInvariant,
+        ] {
+            assert!(!error.to_string().is_empty());
         }
     }
 
