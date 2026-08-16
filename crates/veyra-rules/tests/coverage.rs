@@ -95,16 +95,19 @@ fn boolean_short_circuit_paths_are_deterministic() {
 
 #[test]
 fn primitive_rules_not_and_complexity_bound_cover_both_outcomes() {
-    let supervised = OccupancyContext::new(vec![
-        occupant(1, 40, false),
-        occupant(2, 8, true),
-    ])
-    .unwrap_or_else(|_| unreachable!());
-    let unsupervised = OccupancyContext::new(vec![occupant(3, 8, false)])
+    let supervised = OccupancyContext::new(vec![occupant(1, 40, false), occupant(2, 8, true)])
         .unwrap_or_else(|_| unreachable!());
+    let unsupervised =
+        OccupancyContext::new(vec![occupant(3, 8, false)]).unwrap_or_else(|_| unreachable!());
 
-    assert_eq!(Rule::Capacity { min: 2, max: 2 }.evaluate(&supervised), Ok(true));
-    assert_eq!(Rule::Capacity { min: 3, max: 4 }.evaluate(&supervised), Ok(false));
+    assert_eq!(
+        Rule::Capacity { min: 2, max: 2 }.evaluate(&supervised),
+        Ok(true)
+    );
+    assert_eq!(
+        Rule::Capacity { min: 3, max: 4 }.evaluate(&supervised),
+        Ok(false)
+    );
     assert_eq!(
         Rule::AgeRangeCount {
             min_age: 0,

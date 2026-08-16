@@ -64,10 +64,7 @@ fn every_primitive_and_boolean_opcode_covers_true_and_false_results() {
             },
             true,
         ),
-        (
-            Rule::Not(Box::new(Rule::Capacity { min: 3, max: 3 })),
-            true,
-        ),
+        (Rule::Not(Box::new(Rule::Capacity { min: 3, max: 3 })), true),
         (
             Rule::Not(Box::new(Rule::Capacity { min: 2, max: 2 })),
             false,

@@ -1,1 +1,0 @@
-Run cargo fmt with Rust 1.97.1, commit the exact result, then remove this marker and the one-shot workflow.

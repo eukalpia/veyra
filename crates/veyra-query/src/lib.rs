@@ -106,10 +106,7 @@ impl SearchEngine {
             }
             explain.destination_candidates += 1;
 
-            match room
-                .restrictions
-                .validate_stay(check_in_day, check_out_day)
-            {
+            match room.restrictions.validate_stay(check_in_day, check_out_day) {
                 Ok(_) => explain.restriction_candidates += 1,
                 Err(error) if is_restriction_rejection(error) => continue,
                 Err(error) => return Err(QueryError::Restrictions(error)),
