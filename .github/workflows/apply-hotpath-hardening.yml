@@ -1,0 +1,37 @@
+name: Apply hot-path hardening
+
+on:
+  push:
+    branches:
+      - agent/m0-foundation-ci
+    paths:
+      - .github/veyra-hotpath-hardening.patch
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-hotpath-hardening-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: Apply bounded hot-path patch
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/m0-foundation-ci
+          fetch-depth: 0
+      - name: Validate and apply patch atomically
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check .github/veyra-hotpath-hardening.patch
+          git apply --index .github/veyra-hotpath-hardening.patch
+          git rm .github/veyra-hotpath-hardening.patch
+          git rm .github/workflows/apply-hotpath-hardening.yml
+          git config user.name "Veyra CI"
+          git config user.email "120781817+eukalpia@users.noreply.github.com"
+          git commit -m "perf: harden bounded hot paths and top-k"
+          git push origin HEAD:agent/m0-foundation-ci
