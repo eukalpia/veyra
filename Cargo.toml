@@ -12,6 +12,8 @@ members = [
     "crates/veyra-restrictions",
     "crates/veyra-pricing",
     "crates/veyra-solver",
+    "crates/veyra-ranking",
+    "crates/veyra-query",
     "crates/veyra-runtime",
     "crates/veyra-server",
 ]
