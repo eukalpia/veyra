@@ -1,6 +1,10 @@
 #![forbid(unsafe_code)]
 
 //! Deterministic non-ML ranking over candidates that have already passed all hard constraints.
+//!
+//! Ranking cannot create validity. Every profile is versioned, bounded and has explicit stable
+//! tie-breaking. `BestForFamily` uses a lexicographic family-penalty dimension, so monetary scale
+//! can never accidentally override the semantic layout priority.
 
 use core::cmp::Reverse;
 use core::fmt;
@@ -59,12 +63,9 @@ pub fn top_k(
     let mut ranked = candidates
         .iter()
         .copied()
-        .map(|candidate| {
-            let deterministic_score = score(profile.kind, candidate);
-            RankedCandidate {
-                candidate,
-                deterministic_score,
-            }
+        .map(|candidate| RankedCandidate {
+            candidate,
+            deterministic_score: score(profile.kind, candidate),
         })
         .collect::<Vec<_>>();
 
@@ -100,10 +101,8 @@ fn validate(
 
 fn score(kind: RankingKind, candidate: RankCandidate) -> i128 {
     match kind {
-        RankingKind::Cheapest => i128::from(candidate.projected_price.get()),
-        RankingKind::BestForFamily => {
-            i128::from(candidate.family_penalty) * 1_000_000_000
-                + i128::from(candidate.projected_price.get())
+        RankingKind::Cheapest | RankingKind::BestForFamily => {
+            i128::from(candidate.projected_price.get())
         }
         RankingKind::BestValue => {
             i128::from(candidate.projected_price.get())
@@ -118,15 +117,15 @@ fn score(kind: RankingKind, candidate: RankCandidate) -> i128 {
 fn ordering_key(
     kind: RankingKind,
     entry: RankedCandidate,
-) -> (i128, u16, u32, Reverse<u16>, Reverse<u16>, u32, u32) {
+) -> (u16, i128, u32, Reverse<u16>, Reverse<u16>, u32, u32) {
     let candidate = entry.candidate;
-    let family = match kind {
+    let family_penalty = match kind {
         RankingKind::BestForFamily => candidate.family_penalty,
         RankingKind::Cheapest | RankingKind::BestValue => 0,
     };
     (
+        family_penalty,
         entry.deterministic_score,
-        family,
         candidate.distance_meters,
         Reverse(candidate.quality_milli),
         Reverse(candidate.flexibility_milli),
@@ -199,12 +198,12 @@ mod tests {
     }
 
     #[test]
-    fn family_profile_prioritizes_layout_penalty() {
+    fn family_profile_prioritizes_layout_penalty_lexicographically() {
         let ranked = top_k(
             RankingProfile::v1(RankingKind::BestForFamily),
             &[
-                candidate(1, 1, 10, 2, 900),
-                candidate(1, 2, 1_000, 0, 500),
+                candidate(1, 1, 1, 1, 900),
+                candidate(1, 2, i64::MAX / 4, 0, 500),
             ],
             2,
         )
