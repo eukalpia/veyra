@@ -11,11 +11,7 @@ fn date(year: i32, month: u8, day: u8) -> CivilDate {
 }
 
 fn policy() -> veyra_rule_compiler::CompiledRule {
-    compile(
-        RULE_SCHEMA_V1,
-        &Rule::Capacity { min: 1, max: 4 },
-    )
-    .unwrap_or_else(|_| unreachable!())
+    compile(RULE_SCHEMA_V1, &Rule::Capacity { min: 1, max: 4 }).unwrap_or_else(|_| unreachable!())
 }
 
 fn two_adults(intent: Option<RoomingIntent>) -> BookingParty {
@@ -124,7 +120,7 @@ fn every_occupancy_error_has_stable_display() {
             left: TravelerId::new(1),
             right: TravelerId::new(2),
         },
-        OccupancyError::InvalidContext(RuleError::EmptyOccupancy),
+        OccupancyError::InvalidContext(RuleError::InvalidOccupantCount(0)),
         OccupancyError::CompiledRule(CompileError::RuntimeInvariant),
         OccupancyError::PolicyRejected,
     ] {
