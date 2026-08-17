@@ -22,6 +22,7 @@ Implemented behavior includes:
 - fixed-point monetary pricing with occupancy-dependent adjustments;
 - bounded exact multi-room solving with deterministic profiles;
 - early pruning of already-provably-impossible hard constraints;
+- differential property tests against an independent exhaustive solver reference;
 - deterministic single-room ranking/search;
 - exact property-scoped multi-room search with occupancy-dependent pricing;
 - explicit room spatial projection for floor/building and `Near` / `AdjacentRooms` / `ConnectedRooms` semantics;
@@ -71,7 +72,7 @@ Current exact solver bounds are intentionally explicit:
 
 - maximum travelers in an exact multi-room solve: **16**;
 - maximum candidate rooms for one property: **8**;
-- bounded state budget via `SolverConfig` (default currently **200,000** explored states);
+- default proof budget: **50,000 explored states** and **2,000 valid solutions**;
 - a property exceeding the exact room bound is rejected fail-closed — candidate rooms are never silently truncated.
 
 The supported solution profiles are:
