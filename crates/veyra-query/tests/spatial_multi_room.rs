@@ -53,18 +53,12 @@ fn room(room_id: u32) -> RoomDocument {
         adult_age: 18,
         occupancy_rule: compile_rule(
             RULE_SCHEMA_V1,
-            &Rule::And(vec![
-                Rule::Capacity { min: 1, max: 1 },
-                Rule::RequireAdult {
-                    adult_age: 18,
-                    min_adults: 1,
-                },
-            ]),
+            &Rule::Capacity { min: 1, max: 1 },
         )
         .unwrap_or_else(|_| unreachable!()),
         restrictions: compile_restrictions(
             RESTRICTION_SCHEMA_V1,
-            &[RestrictionRule::MinStay(1)],
+            &[RestrictionRule::MinStay(1), RestrictionRule::MaxStay(5)],
         )
         .unwrap_or_else(|_| unreachable!()),
         prices: PriceVector::try_new(10, vec![money(100)], 1)
