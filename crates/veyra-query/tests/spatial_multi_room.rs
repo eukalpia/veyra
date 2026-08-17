@@ -85,7 +85,7 @@ fn availability() -> AvailabilityIndex {
     availability
 }
 
-fn query<'a>(party: &'a BookingParty) -> MultiRoomStayQuery<'a> {
+fn query(party: &BookingParty) -> MultiRoomStayQuery<'_> {
     MultiRoomStayQuery {
         destination_id: 55,
         check_in_day: 10,
