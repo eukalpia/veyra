@@ -323,7 +323,9 @@ fn search(context: &mut SearchContext<'_>, traveler_index: usize) -> Result<(), 
             return Err(SolverError::StateBudgetExhausted);
         }
         context.assignments.push(room_index);
-        search(context, traveler_index + 1)?;
+        if partial_hard_constraints_hold(context)? {
+            search(context, traveler_index + 1)?;
+        }
         context.assignments.pop();
     }
     Ok(())
@@ -387,6 +389,45 @@ fn layout_hard_constraints_hold(context: &SearchContext<'_>) -> Result<bool, Sol
     {
         let left = assignment_of(context, intent.left)?;
         let right = assignment_of(context, intent.right)?;
+        let left_offer = &context.offers[left];
+        let right_offer = &context.offers[right];
+        let valid = match intent.relation {
+            RoomingRelation::SameRoom => left == right,
+            RoomingRelation::SeparateRoom => left != right,
+            RoomingRelation::SameFloor => left_offer.floor == right_offer.floor,
+            RoomingRelation::SameBuilding => left_offer.building == right_offer.building,
+            relation => return Err(SolverError::UnsupportedHardConstraint(relation)),
+        };
+        if !valid {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn partial_hard_constraints_hold(context: &SearchContext<'_>) -> Result<bool, SolverError> {
+    for intent in context
+        .party
+        .rooming_intents()
+        .iter()
+        .filter(|intent| intent.strength == ConstraintStrength::Must)
+    {
+        let left_position = context
+            .travelers
+            .iter()
+            .position(|id| *id == intent.left)
+            .ok_or(SolverError::UnknownTraveler(intent.left))?;
+        let right_position = context
+            .travelers
+            .iter()
+            .position(|id| *id == intent.right)
+            .ok_or(SolverError::UnknownTraveler(intent.right))?;
+        let Some(left) = context.assignments.get(left_position).copied() else {
+            continue;
+        };
+        let Some(right) = context.assignments.get(right_position).copied() else {
+            continue;
+        };
         let left_offer = &context.offers[left];
         let right_offer = &context.offers[right];
         let valid = match intent.relation {
