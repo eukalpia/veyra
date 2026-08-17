@@ -1,0 +1,26 @@
+name: CDC durability regression
+
+on:
+  push:
+    branches:
+      - agent/m0-foundation-ci
+
+permissions:
+  contents: read
+
+jobs:
+  durability-regression:
+    name: Journal durability regression
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install pinned Rust
+        run: rustup toolchain install 1.97.1 --profile minimal
+      - name: Reproduce failed-write replay classification
+        run: >
+          cargo test
+          -p veyra-cdc
+          --test journal_edge_coverage
+          failed_durable_write_is_retried_instead_of_misclassified_as_duplicate
+          --locked
+          -- --exact

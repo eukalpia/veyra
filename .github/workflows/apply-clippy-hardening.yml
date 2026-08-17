@@ -1,0 +1,84 @@
+name: Apply Clippy hardening
+
+on:
+  push:
+    branches:
+      - agent/m0-foundation-ci
+    paths:
+      - .github/clippy-hardening/READY
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-clippy-hardening-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  harden:
+    name: Apply proven conversions and verify Clippy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/m0-foundation-ci
+          fetch-depth: 0
+      - name: Install pinned toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Apply minimal conversion fixes and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              Path("crates/veyra-party/src/lib.rs"): [
+                  (
+                      "        Ok(years as u16)\n",
+                      "        u16::try_from(years).map_err(|_| PartyError::AgeOutOfRange)\n",
+                  ),
+              ],
+              Path("crates/veyra-rules/src/lib.rs"): [
+                  (
+                      "                let count = context.occupants.len() as u16;\n",
+                      "                let count = u16::try_from(context.occupants.len())\n                    .map_err(|_| RuleError::CountOverflow)?;\n",
+                  ),
+                  (
+                      "                let count = context.count_age_range(*min_age, *max_age) as u16;\n",
+                      "                let count = u16::try_from(\n                    context.count_age_range(*min_age, *max_age),\n                )\n                .map_err(|_| RuleError::CountOverflow)?;\n",
+                  ),
+              ],
+              Path("crates/veyra-pricing/src/lib.rs"): [
+                  (
+                      "        let nights = nights_i64 as usize;\n",
+                      "        let nights =\n            usize::try_from(nights_i64).map_err(|_| PricingError::InvalidStay)?;\n",
+                  ),
+                  (
+                      "        let start = start_i64 as usize;\n        let end = start + nights;\n",
+                      "        let start = usize::try_from(start_i64)\n            .map_err(|_| PricingError::OutsidePriceHorizon)?;\n        let end = start.checked_add(nights).ok_or(PricingError::Overflow)?;\n",
+                  ),
+                  (
+                      "        let night_count = nights as u32;\n",
+                      "        let night_count = u32::try_from(nights).map_err(|_| PricingError::Overflow)?;\n",
+                  ),
+              ],
+          }
+
+          for path, items in replacements.items():
+              text = path.read_text()
+              for old, new in items:
+                  if text.count(old) != 1:
+                      raise SystemExit(f"expected exactly one conversion site in {path}: {old!r}")
+                  text = text.replace(old, new)
+              path.write_text(text)
+          PY
+          cargo fmt --all
+          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+          git rm .github/clippy-hardening/READY
+          git rm .github/workflows/apply-clippy-hardening.yml
+          git config user.name "Veyra CI"
+          git config user.email "120781817+eukalpia@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: preserve checked semantic conversions"
+          git push origin HEAD:agent/m0-foundation-ci

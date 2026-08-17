@@ -1,0 +1,14 @@
+[package]
+name = "veyra-ranking"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+veyra-pricing = { version = "0.1.0", path = "../veyra-pricing" }
+
+[lints]
+workspace = true

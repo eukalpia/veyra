@@ -1,0 +1,18 @@
+[package]
+name = "veyra-rule-compiler"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+veyra-rules = { version = "0.1.0", path = "../veyra-rules" }
+
+[dev-dependencies]
+proptest.workspace = true
+veyra-party = { version = "0.1.0", path = "../veyra-party" }
+
+[lints]
+workspace = true

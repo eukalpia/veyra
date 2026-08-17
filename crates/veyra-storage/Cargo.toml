@@ -1,0 +1,16 @@
+[package]
+name = "veyra-storage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+arc-swap.workspace = true
+veyra-segment = { version = "0.1.0", path = "../veyra-segment" }
+veyra-types = { version = "0.1.0", path = "../veyra-types" }
+
+[lints]
+workspace = true

@@ -1,0 +1,28 @@
+name: Source snapshot
+
+on:
+  push:
+    branches:
+      - agent/m0-foundation-ci
+
+permissions:
+  contents: read
+
+concurrency:
+  group: source-snapshot-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  archive:
+    name: Archive exact branch source
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Create reproducible source archive
+        run: git archive --format=zip --output=veyra-source.zip HEAD
+      - name: Upload exact source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: veyra-source-${{ github.sha }}
+          path: veyra-source.zip
+          if-no-files-found: error
