@@ -152,6 +152,10 @@ impl Segment {
         if payload_length > MAX_PAYLOAD_BYTES as u64 {
             return Err(SegmentError::PayloadTooLarge(MAX_PAYLOAD_BYTES + 1));
         }
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "payload_length is bounded to 512 MiB above, which fits every supported usize target"
+        )]
         let payload_len = payload_length as usize;
         let end = HEADER_LEN + payload_len;
         if bytes.len() != end {
@@ -209,6 +213,10 @@ impl Segment {
         if file_len > max_file as u64 {
             return Err(SegmentError::PayloadTooLarge(MAX_PAYLOAD_BYTES + 1));
         }
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "file_len is bounded to header plus 512 MiB above, which fits every supported usize target"
+        )]
         let len = file_len as usize;
         let mut bytes = Vec::with_capacity(len);
         file.read_to_end(&mut bytes)?;
