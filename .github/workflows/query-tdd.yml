@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/query-tdd.yml
       - tools/patches/v1-query-multi-room.patch
+      - tools/patches/v1-query-dense-set.patch
   workflow_dispatch:
 
 permissions:
@@ -22,7 +23,11 @@ jobs:
       - name: Install pinned Rust
         run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
       - name: Apply multi-room implementation
-        run: git apply --check tools/patches/v1-query-multi-room.patch && git apply tools/patches/v1-query-multi-room.patch
+        run: |
+          git apply --check tools/patches/v1-query-multi-room.patch
+          git apply tools/patches/v1-query-multi-room.patch
+          git apply --check tools/patches/v1-query-dense-set.patch
+          git apply tools/patches/v1-query-dense-set.patch
       - name: Synchronize workspace lockfile
         run: cargo generate-lockfile
       - name: Format workspace
@@ -34,7 +39,7 @@ jobs:
       - name: Commit verified implementation
         shell: bash
         run: |
-          git rm tools/patches/v1-query-multi-room.patch .github/workflows/query-tdd.yml
+          git rm tools/patches/v1-query-multi-room.patch tools/patches/v1-query-dense-set.patch .github/workflows/query-tdd.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Cargo.lock crates/veyra-query/Cargo.toml crates/veyra-query/src/lib.rs
