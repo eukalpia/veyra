@@ -57,6 +57,15 @@ impl DenseRoomSet {
     }
 }
 
+impl<'a> IntoIterator for &'a DenseRoomSet {
+    type Item = u32;
+    type IntoIter = DenseRoomIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
 /// Allocation-free iterator over set room IDs in deterministic ascending order.
 #[derive(Clone, Debug)]
 pub struct DenseRoomIter<'a> {
@@ -102,7 +111,7 @@ impl AvailabilityIndex {
             return Err(AvailabilityError::InvalidRoomCount(room_count));
         }
         // Public bounds keep all arithmetic below 12 million words, including on 32-bit usize.
-        let words_per_day = ((room_count + WORD_BITS - 1) / WORD_BITS) as usize;
+        let words_per_day = room_count.div_ceil(WORD_BITS) as usize;
         let days = day_count as usize;
         let total_words = words_per_day * days;
         Ok(Self {
