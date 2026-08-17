@@ -164,12 +164,11 @@ impl AvailabilityIndex {
             return Err(AvailabilityError::StayTooLong(nights));
         }
         let first = self.day_slice(check_in)?;
-        let last_night = check_out
-            .checked_sub(1)
-            .ok_or(AvailabilityError::InvalidStayRange)?;
+        // A positive stay proves both operations below cannot underflow or overflow.
+        let last_night = check_out - 1;
         let _ = self.day_offset(last_night)?;
         let mut result = first.to_vec();
-        for day in check_in.saturating_add(1)..check_out {
+        for day in (check_in + 1)..check_out {
             for (target, source) in result.iter_mut().zip(self.day_slice(day)?) {
                 *target &= *source;
             }
