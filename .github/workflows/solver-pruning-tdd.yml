@@ -1,0 +1,25 @@
+name: Solver pruning TDD gate
+
+on:
+  push:
+    branches:
+      - agent/v1-production-completion
+    paths:
+      - .github/workflows/solver-pruning-tdd.yml
+      - crates/veyra-solver/tests/pruning.rs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pruning-red:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/v1-production-completion
+      - name: Install pinned Rust
+        run: rustup toolchain install 1.97.1 --profile minimal
+      - name: Run pruning regression
+        run: cargo test -p veyra-solver --test pruning --locked -- --nocapture
