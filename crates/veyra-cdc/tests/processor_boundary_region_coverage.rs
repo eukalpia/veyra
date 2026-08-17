@@ -2,10 +2,12 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use pgwire_replication::{Lsn, ReplicationEvent};
+#[cfg(target_os = "linux")]
+use veyra_cdc::{CheckpointApplyError, CheckpointError};
 use veyra_cdc::{
-    AppliedCheckpoint, CheckpointApplyError, CheckpointError, DurableTransactionProcessor,
-    LiveEventOutcome, LiveReplicationError, LiveReplicationState, ProcessorError, TransactionBatch,
-    TransactionBuildError, process_replication_event,
+    AppliedCheckpoint, DurableTransactionProcessor, LiveEventOutcome, LiveReplicationError,
+    LiveReplicationState, ProcessorError, TransactionBatch, TransactionBuildError,
+    process_replication_event,
 };
 
 fn path(label: &str) -> PathBuf {
@@ -91,12 +93,7 @@ fn nested_begin_and_commit_without_begin_poison_the_processor() {
     ));
     assert!(processor.is_poisoned());
 
-    for file in [
-        journal_path,
-        checkpoint_path,
-        journal_path_2,
-        checkpoint_path_2,
-    ] {
+    for file in [journal_path, checkpoint_path, journal_path_2, checkpoint_path_2] {
         let _ = std::fs::remove_file(file);
     }
 }
