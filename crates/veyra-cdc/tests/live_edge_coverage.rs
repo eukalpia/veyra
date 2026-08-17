@@ -373,7 +373,6 @@ fn checkpoint_apply_and_live_errors_expose_stable_context() {
         LiveReplicationError::Processor(ProcessorError::Journal(JournalError::UnexpectedEof)),
         LiveReplicationError::UnsupportedLogicalMessage("prefix".to_owned()),
         LiveReplicationError::StoppedMidTransaction(LogSequenceNumber::new(8)),
-        LiveReplicationError::UnexpectedBoundaryOutcome,
     ];
     for error in errors {
         assert!(!error.to_string().is_empty());
