@@ -53,8 +53,7 @@ impl SearchEngine {
                 actual: rooms.len(),
             });
         }
-        for (index, room) in rooms.iter().enumerate() {
-            let expected_id = index as u32;
+        for (expected_id, room) in (0_u32..).zip(&rooms) {
             if room.room_id != expected_id {
                 return Err(QueryError::NonDenseRoomId {
                     expected: expected_id,
@@ -99,7 +98,7 @@ impl SearchEngine {
         };
         let mut rank_candidates = Vec::new();
 
-        for room_id in available.iter() {
+        for room_id in &available {
             let room = &self.rooms[room_id as usize];
             if room.destination_id != query.destination_id {
                 continue;
