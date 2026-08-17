@@ -1,0 +1,25 @@
+name: Runtime generation TDD gate
+
+on:
+  push:
+    branches:
+      - agent/v1-production-completion
+    paths:
+      - .github/workflows/runtime-generation-tdd.yml
+      - crates/veyra-runtime/tests/generation_state.rs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generation-red:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/v1-production-completion
+      - name: Install pinned Rust
+        run: rustup toolchain install 1.97.1 --profile minimal
+      - name: Run atomic generation regression
+        run: cargo test -p veyra-runtime --test generation_state --locked -- --nocapture
