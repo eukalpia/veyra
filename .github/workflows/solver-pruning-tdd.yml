@@ -6,7 +6,6 @@ on:
       - agent/v1-production-completion
     paths:
       - .github/workflows/solver-pruning-tdd.yml
-      - tools/patches/v1-solver-pruning.patch
   workflow_dispatch:
 
 permissions:
@@ -21,8 +20,27 @@ jobs:
           ref: agent/v1-production-completion
       - name: Install pinned Rust
         run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
-      - name: Apply pruning implementation
-        run: git apply --check tools/patches/v1-solver-pruning.patch && git apply tools/patches/v1-solver-pruning.patch
+      - name: Apply exact pruning transformation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("crates/veyra-solver/src/lib.rs")
+          text = path.read_text()
+          old_search = """        context.assignments.push(room_index);\n        search(context, traveler_index + 1)?;\n        context.assignments.pop();\n"""
+          new_search = """        context.assignments.push(room_index);\n        if partial_hard_constraints_hold(context)? {\n            search(context, traveler_index + 1)?;\n        }\n        context.assignments.pop();\n"""
+          if text.count(old_search) != 1:
+              raise SystemExit("search recursion anchor changed")
+          text = text.replace(old_search, new_search, 1)
+
+          marker = "fn layout_soft_penalty(context: &SearchContext<'_>) -> Result<u32, SolverError> {\n"
+          helper = """fn partial_hard_constraints_hold(context: &SearchContext<'_>) -> Result<bool, SolverError> {\n    for intent in context\n        .party\n        .rooming_intents()\n        .iter()\n        .filter(|intent| intent.strength == ConstraintStrength::Must)\n    {\n        let left_position = context\n            .travelers\n            .iter()\n            .position(|id| *id == intent.left)\n            .ok_or(SolverError::UnknownTraveler(intent.left))?;\n        let right_position = context\n            .travelers\n            .iter()\n            .position(|id| *id == intent.right)\n            .ok_or(SolverError::UnknownTraveler(intent.right))?;\n        let Some(left) = context.assignments.get(left_position).copied() else {\n            continue;\n        };\n        let Some(right) = context.assignments.get(right_position).copied() else {\n            continue;\n        };\n        let left_offer = &context.offers[left];\n        let right_offer = &context.offers[right];\n        let valid = match intent.relation {\n            RoomingRelation::SameRoom => left == right,\n            RoomingRelation::SeparateRoom => left != right,\n            RoomingRelation::SameFloor => left_offer.floor == right_offer.floor,\n            RoomingRelation::SameBuilding => left_offer.building == right_offer.building,\n            relation => return Err(SolverError::UnsupportedHardConstraint(relation)),\n        };\n        if !valid {\n            return Ok(false);\n        }\n    }\n    Ok(true)\n}\n\n"""
+          if text.count(marker) != 1:
+              raise SystemExit("soft-penalty anchor changed")
+          text = text.replace(marker, helper + marker, 1)
+          path.write_text(text)
+          PY
       - name: Format workspace
         run: cargo fmt --all
       - name: Strict solver clippy
