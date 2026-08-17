@@ -1,6 +1,6 @@
 use core::fmt;
 use std::fs::{File, OpenOptions};
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
 use veyra_types::LogSequenceNumber;
@@ -101,9 +101,9 @@ impl AppliedCheckpoint {
     }
 
     fn recover(&mut self) -> Result<(), CheckpointError> {
-        self.file.flush()?;
+        // `File` is unbuffered and every successful append is synced before state publication.
+        // A newly opened recovery handle starts at offset zero, so neither flush nor seek is needed.
         let mut reader = OpenOptions::new().read(true).write(true).open(&self.path)?;
-        reader.seek(SeekFrom::Start(0))?;
         let file_len = reader.metadata()?.len();
         let record_len = RECORD_LEN as u64;
         let complete_len = file_len - (file_len % record_len);
