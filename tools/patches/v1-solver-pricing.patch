@@ -181,13 +181,13 @@
      config: SolverConfig,
      travelers: Vec<TravelerId>,
      assignments: Vec<usize>,
-@@ -235,19 +348,19 @@
+@@ -235,19 +348,18 @@
          if assigned.is_empty() {
              continue;
          }
 -        if validate_room(
 -            &offer.occupancy_rule,
-+        let occupancy = match validate_room(
++        let Ok(occupancy) = validate_room(
 +            offer.occupancy_rule,
              context.party,
              context.check_in,
@@ -196,11 +196,9 @@
 -        )
 -        .is_err()
 -        {
--            return Ok(());
++        ) else {
+             return Ok(());
 -        }
-+        ) {
-+            Ok(report) => report,
-+            Err(_) => return Ok(()),
 +        };
 +        let room_price = offer.price_for(occupancy)?;
          total_price = total_price
@@ -209,7 +207,7 @@
              .map_err(SolverError::Price)?;
          let mut assigned = assigned;
          assigned.sort_unstable();
-@@ -316,7 +429,7 @@
+@@ -316,7 +428,7 @@
              satisfied
          };
          if violated {
@@ -218,7 +216,7 @@
          }
      }
      Ok(penalty)
-@@ -383,6 +496,7 @@
+@@ -383,6 +495,7 @@
      TooManyTravelers(usize),
      InvalidRoomCount(usize),
      InvalidBudget,
