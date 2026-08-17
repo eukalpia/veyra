@@ -34,12 +34,11 @@
 - [x] Reproduce the stale-lockfile failure on the integration head.
 - [x] Regenerate `Cargo.lock` with pinned Rust 1.97.1.
 - [x] Change root and fuzz lockfile gates to resolve the full dependency graph instead of `--no-deps`.
-- [ ] Run the complete CI matrix and record the first clean baseline SHA.
+- [ ] Run the final complete CI matrix and record the clean qualification SHA.
 
 ### Task 2: Occupancy-dependent solver pricing
 
 **Files:**
-- Modify: `crates/veyra-solver/Cargo.toml`
 - Modify: `crates/veyra-solver/src/lib.rs`
 - Test: `crates/veyra-solver/tests/priced_solver.rs`
 
@@ -47,13 +46,13 @@
 - Consumes: `PriceVector::quote(check_in_day, check_out_day, adults, children, OccupancyAdjustment)` and `OccupancyReport` from `validate_room`.
 - Produces: `PricedRoomOffer` and `solve_priced(...)`, while preserving existing `RoomOffer` and `solve(...)`.
 
-- [ ] Add a failing regression where static base-room prices choose a different allocation than exact occupancy-dependent prices.
-- [ ] Verify the new test fails because `solve_priced` does not yet exist.
-- [ ] Add `PricedRoomOffer { room_id, prices, occupancy_adjustment, floor, building, adult_age, occupancy_rule }`.
-- [ ] Add `solve_priced(party, check_in_date, check_in_day, check_out_day, offers, config)`.
-- [ ] At each valid leaf, price each used room from its actual adult/child counts returned by occupancy validation.
-- [ ] Reject invalid stay ranges, negative projected totals, duplicate room IDs, and price-vector horizon misses through explicit `SolverError` variants.
-- [ ] Run solver tests, clippy, and coverage gates.
+- [x] Add a failing regression where static base-room prices choose a different allocation than exact occupancy-dependent prices.
+- [x] Verify the new test fails because `solve_priced` does not yet exist.
+- [x] Add `PricedRoomOffer { room_id, prices, occupancy_adjustment, floor, building, adult_age, occupancy_rule }`.
+- [x] Add `solve_priced(party, check_in_date, check_in_day, check_out_day, offers, config)`.
+- [x] At each valid leaf, price each used room from its actual adult/child counts returned by occupancy validation.
+- [x] Reject invalid stay ranges, duplicate room IDs, invalid/non-representable pricing, and price-vector horizon misses through explicit errors.
+- [x] Run targeted solver tests and strict Clippy. Final repository coverage remains part of Task 7.
 
 ### Task 3: Multi-room public query orchestration
 
@@ -66,73 +65,77 @@
 - Consumes: availability, restrictions, `RoomDocument`, `solve_priced`.
 - Produces: `MultiRoomStayQuery`, `MultiRoomSearchHit`, `MultiRoomQueryExplain`, `MultiRoomSearchResult`, and `SearchEngine::search_multi_room`.
 
-- [ ] Add a failing two-family regression where no single room is valid but one property has a valid two-room solution.
-- [ ] Verify the test fails because multi-room query orchestration is absent.
-- [ ] Group candidate rooms by `property_id`; never allow a solver allocation to span properties.
-- [ ] Apply availability, destination, and stay restrictions before invoking the solver.
-- [ ] Use `solve_priced` so price reflects the actual party split per room.
-- [ ] Apply budget after exact allocation price is known.
-- [ ] Return deterministic ordering and bounded `limit` results.
-- [ ] Return explicit counters for properties considered, properties solved, solver state budget failures, and returned results.
-- [ ] Fail closed when a property's candidate room set exceeds the exact solver's provable room bound; never silently truncate candidates.
-- [ ] Run query tests, full workspace tests, clippy, and coverage gates.
+- [x] Add a failing family regression where no single room is valid but one property has a valid multi-room solution.
+- [x] Verify the test fails because multi-room query orchestration is absent.
+- [x] Group candidate rooms by `property_id`; never allow a solver allocation to span properties.
+- [x] Apply availability, destination, and stay restrictions before invoking the solver.
+- [x] Use `solve_priced` so price reflects the actual party split per room.
+- [x] Apply budget after exact allocation price is known.
+- [x] Return deterministic ordering and bounded `limit` results.
+- [x] Return explicit explain counters and propagate solver proof-budget exhaustion as an error instead of silently skipping a property.
+- [x] Fail closed when a property's candidate room set exceeds the exact solver's provable room bound; never silently truncate candidates.
+- [x] Run targeted query tests and strict Clippy. Full workspace/coverage qualification remains Task 7.
 
 ### Task 4: Solver search pruning without semantic shortcuts
 
 **Files:**
 - Modify: `crates/veyra-solver/src/lib.rs`
 - Test: `crates/veyra-solver/tests/pruning.rs`
+- Test: `crates/veyra-solver/tests/pruning_differential.rs`
 
 **Interfaces:**
 - Consumes: rooming intents and partial assignments.
 - Produces: the same exact solution set with fewer explored states.
 
-- [ ] Add a regression asserting a hard-separate partial assignment is rejected before a complete leaf.
-- [ ] Verify existing exhaustive search explores the larger state count.
-- [ ] Check hard SameRoom/SeparateRoom/SameFloor/SameBuilding constraints as soon as both endpoints are assigned.
-- [ ] Preserve deterministic enumeration and exact optimum proof.
-- [ ] Add property tests comparing pruned vs exhaustive reference solutions for small generated cases.
-- [ ] Run solver property tests and Miri-compatible core checks.
+- [x] Add a regression where a hard same-room constraint makes partial branches provably impossible.
+- [x] Verify the pre-pruning solver explores 14 states where exact early pruning needs 10.
+- [x] Check hard `SameRoom`, `SeparateRoom`, `SameFloor`, `SameBuilding`, and topology-backed relations as soon as both endpoints are assigned.
+- [x] Preserve deterministic enumeration and exact optimum proof.
+- [ ] Differential/property test against an independent exhaustive reference is added and awaiting its targeted gate.
+- [x] Run targeted solver tests and strict Clippy; project-wide Miri remains the dedicated `veyra-types` CI gate.
 
 ### Task 5: Explicit room topology relations
 
 **Files:**
 - Modify: `crates/veyra-solver/src/lib.rs`
+- Create: `crates/veyra-solver/src/topology.rs`
 - Modify: `crates/veyra-query/src/lib.rs`
 - Test: `crates/veyra-solver/tests/topology.rs`
+- Test: `crates/veyra-query/tests/spatial_multi_room.rs`
 
 **Interfaces:**
-- Consumes: explicit projected room-relation edges.
-- Produces: provable `Near`, `AdjacentRooms`, and `ConnectedRooms` semantics.
+- Consumes: explicit projected room placements and symmetric room-relation edges.
+- Produces: provable `SameFloor`, `SameBuilding`, `Near`, `AdjacentRooms`, and `ConnectedRooms` semantics.
 
-- [ ] Add failing tests showing topology relations are accepted only when an explicit symmetric relation edge exists.
-- [ ] Add a bounded `RoomRelationIndex` keyed by room IDs with separate near/adjacent/connected edges.
-- [ ] Validate duplicate/asymmetric/unknown room edges at construction time.
-- [ ] Evaluate hard and soft topology intents through the relation index.
-- [ ] Preserve fail-closed behavior when topology data is absent.
-- [ ] Wire the relation projection through multi-room query documents.
-- [ ] Run solver/query tests and coverage.
+- [x] Add failing tests showing topology relations are accepted only when an explicit complete projection can prove them.
+- [x] Add a bounded `RoomRelationIndex` keyed by room IDs with near/adjacent/connected edges.
+- [x] Validate duplicate rooms, unknown endpoints, self-edges, and duplicate normalized edges at construction time.
+- [x] Evaluate hard and soft topology intents through the relation index.
+- [x] Preserve fail-closed behavior when required topology data is absent.
+- [x] Add `RoomSpatialProjection` with dense floor/building placements and wire it through multi-room query candidate projection.
+- [x] Run targeted solver/query tests and strict Clippy. Final coverage remains Task 7.
 
-### Task 6: Runtime query snapshot and service boundary
+### Task 6: Runtime query generation and service boundary
 
 **Files:**
-- Modify: `crates/veyra-runtime/Cargo.toml`
 - Modify: `crates/veyra-runtime/src/lib.rs`
 - Modify: `crates/veyra-server/Cargo.toml`
 - Modify: `crates/veyra-server/src/lib.rs`
-- Test: `crates/veyra-runtime/tests/query_snapshot.rs`
+- Test: `crates/veyra-runtime/tests/generation_state.rs`
 - Test: `crates/veyra-server/tests/query_boundary.rs`
 
 **Interfaces:**
-- Consumes: immutable `SearchEngine` projection plus runtime health metadata.
-- Produces: atomically published query-ready snapshots and a bounded typed request handler that refuses queries unless the snapshot is Ready.
+- Consumes: immutable `SearchEngine` projection plus runtime health/progress metadata.
+- Produces: atomically published query-ready generations and a typed request boundary that refuses queries unless the generation is provably queryable.
 
-- [ ] Add a failing test proving a not-ready runtime cannot execute a query.
-- [ ] Publish search engine + generation metadata atomically through `ArcSwap`.
-- [ ] Add a typed server handler that maps runtime/query errors to stable machine-readable error codes.
-- [ ] Enforce request/body/party/limit bounds before expensive solver work.
-- [ ] Keep health endpoints independent of query success.
-- [ ] Run runtime/server tests and full CI.
+- [x] Add a failing test proving a not-ready runtime cannot execute a query.
+- [x] Publish query payload + generation metadata atomically through `ArcSwap` as one `PublishedGeneration<T>`.
+- [x] Reject `Ready` without payload and payload attached to a non-`Ready` phase.
+- [x] Add `GenerationState::admit(minimum_lsn)` so a caller receives only the exact payload generation whose status proved safe/current enough.
+- [x] Add a typed server `QueryService` for single-room and multi-room search with stable machine-readable failure codes.
+- [x] Enforce party/limit/stay/solver bounds in typed query validation before expensive exact solve work; no public raw-body query protocol is frozen in V1.
+- [x] Keep health endpoints independent of business-query success.
+- [x] Run targeted runtime/server tests and strict Clippy. Full CI remains Task 7.
 
 ### Task 7: Truthful documentation and release qualification
 
@@ -145,8 +148,12 @@
 - Consumes: verified CI evidence.
 - Produces: documentation that matches executable behavior and an auditable qualification record.
 
-- [ ] Remove stale statements claiming implemented crates do not exist.
-- [ ] Mark only invariants proven by executable tests as enforced.
-- [ ] Document exact unsupported semantics and bounds.
-- [ ] Record final SHA and each required CI job conclusion.
-- [ ] Mark PR ready for review only after every required job is green.
+- [x] Remove stale statements claiming implemented crates do not exist.
+- [x] Replace milestone placeholders in the invariant register with executable enforcement references.
+- [x] Document exact solver bounds, topology proof semantics, authority boundaries, and unsupported/fail-closed cases.
+- [ ] Correct README/default-budget wording after the source-of-truth check (`50,000` states / `2,000` solutions).
+- [ ] Run the final full CI matrix on an otherwise frozen implementation/documentation head.
+- [ ] Repair every real CI failure without lowering coverage/security/lint gates.
+- [ ] Record the qualified implementation SHA and every required CI job conclusion in the checkpoint.
+- [ ] Run CI once more for the documentation-only checkpoint head.
+- [ ] Mark PR ready for review only after every required final job is green.
