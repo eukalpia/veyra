@@ -122,8 +122,8 @@ impl Rule {
     fn evaluate_validated(&self, context: &OccupancyContext) -> Result<bool, RuleError> {
         match self {
             Self::Capacity { min, max } => {
-                let count = context.occupants.len() as u16;
-                Ok((*min..=*max).contains(&count))
+                let count = context.occupants.len();
+                Ok((usize::from(*min)..=usize::from(*max)).contains(&count))
             }
             Self::AgeRangeCount {
                 min_age,
@@ -131,8 +131,8 @@ impl Rule {
                 min_count,
                 max_count,
             } => {
-                let count = context.count_age_range(*min_age, *max_age) as u16;
-                Ok((*min_count..=*max_count).contains(&count))
+                let count = context.count_age_range(*min_age, *max_age);
+                Ok((usize::from(*min_count)..=usize::from(*max_count)).contains(&count))
             }
             Self::RequireAdult {
                 adult_age,
