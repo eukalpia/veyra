@@ -116,14 +116,14 @@ impl Rule {
 
     pub fn evaluate(&self, context: &OccupancyContext) -> Result<bool, RuleError> {
         self.validate()?;
-        self.evaluate_validated(context)
+        Ok(self.evaluate_validated(context))
     }
 
-    fn evaluate_validated(&self, context: &OccupancyContext) -> Result<bool, RuleError> {
+    fn evaluate_validated(&self, context: &OccupancyContext) -> bool {
         match self {
             Self::Capacity { min, max } => {
                 let count = context.occupants.len();
-                Ok((usize::from(*min)..=usize::from(*max)).contains(&count))
+                (usize::from(*min)..=usize::from(*max)).contains(&count)
             }
             Self::AgeRangeCount {
                 min_age,
@@ -132,7 +132,7 @@ impl Rule {
                 max_count,
             } => {
                 let count = context.count_age_range(*min_age, *max_age);
-                Ok((usize::from(*min_count)..=usize::from(*max_count)).contains(&count))
+                (usize::from(*min_count)..=usize::from(*max_count)).contains(&count)
             }
             Self::RequireAdult {
                 adult_age,
@@ -143,30 +143,21 @@ impl Rule {
                     .iter()
                     .filter(|occupant| occupant.age >= *adult_age)
                     .count();
-                Ok(count >= usize::from(*min_adults))
+                count >= usize::from(*min_adults)
             }
-            Self::RequireGuardianForMinors { minor_below_age } => {
-                Ok(context.occupants.iter().all(|occupant| {
+            Self::RequireGuardianForMinors { minor_below_age } => context
+                .occupants
+                .iter()
+                .all(|occupant| {
                     occupant.age >= *minor_below_age || occupant.authorized_guardian_present
-                }))
-            }
-            Self::And(children) => {
-                for child in children {
-                    if !child.evaluate_validated(context)? {
-                        return Ok(false);
-                    }
-                }
-                Ok(true)
-            }
-            Self::Or(children) => {
-                for child in children {
-                    if child.evaluate_validated(context)? {
-                        return Ok(true);
-                    }
-                }
-                Ok(false)
-            }
-            Self::Not(child) => Ok(!child.evaluate_validated(context)?),
+                }),
+            Self::And(children) => children
+                .iter()
+                .all(|child| child.evaluate_validated(context)),
+            Self::Or(children) => children
+                .iter()
+                .any(|child| child.evaluate_validated(context)),
+            Self::Not(child) => !child.evaluate_validated(context),
         }
     }
 }
