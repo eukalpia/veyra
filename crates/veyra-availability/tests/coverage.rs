@@ -110,8 +110,6 @@ fn dimensions_ranges_and_display_fail_closed() {
         AvailabilityError::StayTooLong(3),
         AvailabilityError::DayOutOfRange(4),
         AvailabilityError::RoomOutOfRange(5),
-        AvailabilityError::SizeOverflow,
-        AvailabilityError::InternalBounds,
     ] {
         assert!(!error.to_string().is_empty());
     }

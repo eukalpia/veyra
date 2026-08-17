@@ -136,10 +136,7 @@ impl AvailabilityIndex {
         let word_in_day = (room_id / WORD_BITS) as usize;
         let bit = room_id % WORD_BITS;
         let index = day_offset * self.words_per_day + word_in_day;
-        let word = self
-            .words
-            .get_mut(index)
-            .ok_or(AvailabilityError::InternalBounds)?;
+        let word = &mut self.words[index];
         if available {
             *word |= 1_u64 << bit;
         } else {
@@ -163,13 +160,12 @@ impl AvailabilityIndex {
         if nights > MAX_STAY_NIGHTS {
             return Err(AvailabilityError::StayTooLong(nights));
         }
-        let first = self.day_slice(check_in)?;
-        // A positive stay proves both operations below cannot underflow or overflow.
-        let last_night = check_out - 1;
-        let _ = self.day_offset(last_night)?;
-        let mut result = first.to_vec();
-        for day in (check_in + 1)..check_out {
-            for (target, source) in result.iter_mut().zip(self.day_slice(day)?) {
+        let first_offset = self.day_offset(check_in)?;
+        // A positive stay proves the subtraction below cannot underflow.
+        let last_offset = self.day_offset(check_out - 1)?;
+        let mut result = self.day_slice_at(first_offset).to_vec();
+        for offset in (first_offset + 1)..=last_offset {
+            for (target, source) in result.iter_mut().zip(self.day_slice_at(offset)) {
                 *target &= *source;
             }
         }
@@ -217,21 +213,17 @@ impl AvailabilityIndex {
 
     fn available_on_day(&self, day: u32, room_id: u32) -> Result<bool, AvailabilityError> {
         // Callers iterate only over `0..room_count`; the public mutation API enforces the same bound.
-        let slice = self.day_slice(day)?;
+        let offset = self.day_offset(day)?;
+        let slice = self.day_slice_at(offset);
         let word = (room_id / WORD_BITS) as usize;
         let bit = room_id % WORD_BITS;
-        Ok(slice
-            .get(word)
-            .is_some_and(|value| value & (1_u64 << bit) != 0))
+        Ok(slice[word] & (1_u64 << bit) != 0)
     }
 
-    fn day_slice(&self, day: u32) -> Result<&[u64], AvailabilityError> {
-        let offset = self.day_offset(day)?;
+    fn day_slice_at(&self, offset: usize) -> &[u64] {
         let start = offset * self.words_per_day;
         let end = start + self.words_per_day;
-        self.words
-            .get(start..end)
-            .ok_or(AvailabilityError::InternalBounds)
+        &self.words[start..end]
     }
 
     fn day_offset(&self, day: u32) -> Result<usize, AvailabilityError> {
@@ -253,8 +245,6 @@ pub enum AvailabilityError {
     StayTooLong(u32),
     DayOutOfRange(u32),
     RoomOutOfRange(u32),
-    SizeOverflow,
-    InternalBounds,
 }
 
 impl fmt::Display for AvailabilityError {

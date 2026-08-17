@@ -40,7 +40,7 @@ fn every_segment_type_round_trips() {
         SegmentType::Rules,
     ] {
         let original = segment(kind);
-        let encoded = original.encode().unwrap_or_else(|_| unreachable!());
+        let encoded = original.encode();
         let decoded = Segment::decode(&encoded).unwrap_or_else(|_| unreachable!());
         assert_eq!(decoded.header().segment_type, kind);
         assert_eq!(decoded.payload(), &[1, 2, 3]);
@@ -53,9 +53,7 @@ fn header_and_payload_corruption_fail_closed() {
         Segment::decode(&[0; 3]),
         Err(SegmentError::TruncatedHeader(3))
     ));
-    let original = segment(SegmentType::Availability)
-        .encode()
-        .unwrap_or_else(|_| unreachable!());
+    let original = segment(SegmentType::Availability).encode();
 
     let mut bytes = original.clone();
     bytes[0] = b'X';

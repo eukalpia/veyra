@@ -66,6 +66,9 @@ impl CompiledRule {
         if self.schema_version != RULE_SCHEMA_V1 {
             return Err(CompileError::UnsupportedSchema(self.schema_version));
         }
+        if self.ops.len() > MAX_OPS {
+            return Err(CompileError::TooManyOps(self.ops.len()));
+        }
         let mut stack = [false; MAX_OPS];
         let mut stack_len = 0_usize;
 
@@ -77,7 +80,7 @@ impl CompiledRule {
                         &mut stack,
                         &mut stack_len,
                         (usize::from(min)..=usize::from(max)).contains(&count),
-                    )?;
+                    );
                 }
                 Op::AgeRangeCount {
                     min_age,
@@ -90,7 +93,7 @@ impl CompiledRule {
                         &mut stack,
                         &mut stack_len,
                         (usize::from(min_count)..=usize::from(max_count)).contains(&count),
-                    )?;
+                    );
                 }
                 Op::RequireAdult {
                     adult_age,
@@ -105,17 +108,17 @@ impl CompiledRule {
                         &mut stack,
                         &mut stack_len,
                         adults >= usize::from(min_adults),
-                    )?;
+                    );
                 }
                 Op::RequireGuardianForMinors { minor_below_age } => {
                     let valid = context.occupants().iter().all(|occupant| {
                         occupant.age >= minor_below_age || occupant.authorized_guardian_present
                     });
-                    push(&mut stack, &mut stack_len, valid)?;
+                    push(&mut stack, &mut stack_len, valid);
                 }
                 Op::Not => {
                     let value = pop(&stack, &mut stack_len)?;
-                    push(&mut stack, &mut stack_len, !value)?;
+                    push(&mut stack, &mut stack_len, !value);
                 }
                 Op::And(count) => {
                     reduce(&mut stack, &mut stack_len, count, Reduction::And)?;
@@ -195,17 +198,9 @@ fn compile_inner(rule: &Rule, ops: &mut Vec<Op>) {
     }
 }
 
-fn push(
-    stack: &mut [bool; MAX_OPS],
-    stack_len: &mut usize,
-    value: bool,
-) -> Result<(), CompileError> {
-    if *stack_len == MAX_OPS {
-        return Err(CompileError::RuntimeInvariant);
-    }
+fn push(stack: &mut [bool; MAX_OPS], stack_len: &mut usize, value: bool) {
     stack[*stack_len] = value;
     *stack_len += 1;
-    Ok(())
 }
 
 fn pop(stack: &[bool; MAX_OPS], stack_len: &mut usize) -> Result<bool, CompileError> {
@@ -227,13 +222,15 @@ fn reduce(
     }
     let mut value = matches!(reduction, Reduction::And);
     for _ in 0..count {
-        let next = pop(stack, stack_len)?;
+        *stack_len -= 1;
+        let next = stack[*stack_len];
         value = match reduction {
             Reduction::And => value && next,
             Reduction::Or => value || next,
         };
     }
-    push(stack, stack_len, value)
+    push(stack, stack_len, value);
+    Ok(())
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

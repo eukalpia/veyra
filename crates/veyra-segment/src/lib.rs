@@ -100,7 +100,8 @@ impl Segment {
         &self.payload
     }
 
-    pub fn encode(&self) -> Result<Vec<u8>, SegmentError> {
+    #[must_use]
+    pub fn encode(&self) -> Vec<u8> {
         let total = HEADER_LEN + self.payload.len();
         let mut out = Vec::with_capacity(total);
         out.extend_from_slice(&MAGIC);
@@ -119,7 +120,7 @@ impl Segment {
         out.extend_from_slice(&0_u32.to_le_bytes());
         out.extend_from_slice(&0_u64.to_le_bytes());
         out.extend_from_slice(&self.payload);
-        Ok(out)
+        out
     }
 
     pub fn decode(bytes: &[u8]) -> Result<Self, SegmentError> {
@@ -183,10 +184,9 @@ impl Segment {
         })
     }
 
-    pub fn write_atomic(&self, path: impl AsRef<Path>) -> Result<(), SegmentError> {
-        let path = path.as_ref();
+    pub fn write_atomic(&self, path: &Path) -> Result<(), SegmentError> {
         let temp = temp_path(path)?;
-        let encoded = self.encode()?;
+        let encoded = self.encode();
         let write_result = (|| -> Result<(), SegmentError> {
             let mut file = OpenOptions::new()
                 .create_new(true)
@@ -205,7 +205,7 @@ impl Segment {
         write_result
     }
 
-    pub fn read(path: impl AsRef<Path>) -> Result<Self, SegmentError> {
+    pub fn read(path: &Path) -> Result<Self, SegmentError> {
         let mut file = File::open(path)?;
         let metadata = file.metadata()?;
         let file_len = metadata.len();
@@ -343,7 +343,7 @@ mod tests {
     #[test]
     fn round_trip_preserves_header_and_payload() {
         let segment = segment();
-        let bytes = segment.encode().unwrap_or_else(|_| unreachable!());
+        let bytes = segment.encode();
         let decoded = Segment::decode(&bytes).unwrap_or_else(|_| unreachable!());
         assert_eq!(decoded, segment);
         assert_eq!(decoded.header().generation.get(), 7);
@@ -352,19 +352,19 @@ mod tests {
 
     #[test]
     fn corrupt_and_unknown_formats_fail_closed() {
-        let mut bytes = segment().encode().unwrap_or_else(|_| unreachable!());
+        let mut bytes = segment().encode();
         bytes[0] = b'X';
         assert!(matches!(
             Segment::decode(&bytes),
             Err(SegmentError::InvalidMagic)
         ));
-        let mut bytes = segment().encode().unwrap_or_else(|_| unreachable!());
+        let mut bytes = segment().encode();
         bytes[4..6].copy_from_slice(&99_u16.to_le_bytes());
         assert!(matches!(
             Segment::decode(&bytes),
             Err(SegmentError::UnsupportedVersion(99))
         ));
-        let mut bytes = segment().encode().unwrap_or_else(|_| unreachable!());
+        let mut bytes = segment().encode();
         bytes[6..8].copy_from_slice(&99_u16.to_le_bytes());
         assert!(matches!(
             Segment::decode(&bytes),
@@ -374,14 +374,14 @@ mod tests {
 
     #[test]
     fn checksum_length_and_lsn_errors_fail_closed() {
-        let mut bytes = segment().encode().unwrap_or_else(|_| unreachable!());
+        let mut bytes = segment().encode();
         let last = bytes.len() - 1;
         bytes[last] ^= 0xff;
         assert!(matches!(
             Segment::decode(&bytes),
             Err(SegmentError::ChecksumMismatch)
         ));
-        let mut bytes = segment().encode().unwrap_or_else(|_| unreachable!());
+        let mut bytes = segment().encode();
         bytes.pop();
         assert!(matches!(
             Segment::decode(&bytes),

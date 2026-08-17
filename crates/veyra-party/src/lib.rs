@@ -84,12 +84,19 @@ impl CivilDate {
             .checked_sub(self.year)
             .ok_or(PartyError::AgeOutOfRange)?;
         if (date.month, date.day) < (self.month, self.day) {
-            years = years.checked_sub(1).ok_or(PartyError::AgeOutOfRange)?;
+            // `date >= self` means a pre-birthday date here must be in a later year.
+            years -= 1;
         }
         if years > i32::from(MAX_AGE) {
             return Err(PartyError::AgeOutOfRange);
         }
-        u16::try_from(years).map_err(|_| PartyError::AgeOutOfRange)
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "the checks above prove age is in the closed interval 0..=MAX_AGE"
+        )]
+        let age = years as u16;
+        Ok(age)
     }
 }
 
