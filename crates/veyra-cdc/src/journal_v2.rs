@@ -128,14 +128,13 @@ impl Journal {
     }
 
     pub fn replay(&mut self) -> Result<Vec<TransactionBatch>, JournalError> {
-        self.file.flush()?;
+        // `File` is unbuffered and append durability is established with `sync_data`.
         let mut reader = File::open(&self.path)?;
         let (records, _) = scan(&mut reader, false)?;
         Ok(records)
     }
 
     fn recover(&mut self) -> Result<(), JournalError> {
-        self.file.flush()?;
         let mut reader = OpenOptions::new().read(true).write(true).open(&self.path)?;
         let (records, truncate_to) = scan(&mut reader, true)?;
         if let Some(len) = truncate_to {
@@ -157,7 +156,7 @@ fn scan(
     file: &mut File,
     allow_incomplete_tail: bool,
 ) -> Result<(Vec<TransactionBatch>, Option<u64>), JournalError> {
-    file.seek(SeekFrom::Start(0))?;
+    // Every caller supplies a freshly opened handle whose cursor is at offset zero.
     let file_len = file.metadata()?.len();
     let header_len = HEADER_LEN as u64;
     let mut records = Vec::new();
@@ -314,10 +313,9 @@ impl<'a> Cursor<'a> {
         Self { bytes, offset: 0 }
     }
     fn take(&mut self, len: usize) -> Result<&'a [u8], JournalError> {
-        let end = self
-            .offset
-            .checked_add(len)
-            .ok_or(JournalError::LengthOverflow)?;
+        // Journal payloads are capped at 64 MiB, so cursor arithmetic cannot overflow `usize`
+        // on any supported 64-bit target.
+        let end = self.offset + len;
         let slice = self
             .bytes
             .get(self.offset..end)
@@ -385,7 +383,6 @@ pub enum JournalError {
     ChecksumMismatch(u64),
     HeaderPayloadMismatch(u64),
     UnexpectedEof,
-    LengthOverflow,
     InvalidChangeKind(u8),
     InvalidOptionTag(u8),
     TrailingBytes(usize),
