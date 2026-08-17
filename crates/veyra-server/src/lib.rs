@@ -5,6 +5,7 @@
 //! The server is intentionally separate from BEAM/NIF execution. A Veyra process crash
 //! therefore cannot directly crash the Elixir VM.
 
+use std::fmt;
 use std::future::Future;
 use std::io;
 use std::net::{AddrParseError, SocketAddr};
@@ -15,11 +16,95 @@ use axum::routing::get;
 use axum::{Json, Router};
 use serde::Serialize;
 use tokio::net::TcpListener;
-use veyra_runtime::{RuntimeSnapshot, RuntimeState, ServicePhase};
+use veyra_query::{
+    MultiRoomSearchResult, MultiRoomStayQuery, QueryError, SearchEngine, SearchResult, StayQuery,
+};
+use veyra_runtime::{
+    CannotProveReason, GenerationState, RuntimeSnapshot, RuntimeState, ServicePhase,
+};
 use veyra_types::{GenerationId, LogSequenceNumber, ProjectionProgress};
 
 /// Portable default for the administrative listener.
 pub const DEFAULT_BIND: &str = "127.0.0.1:8080";
+
+/// Typed query boundary backed only by atomically-published immutable generations.
+pub struct QueryService {
+    generations: GenerationState<SearchEngine>,
+}
+
+impl QueryService {
+    /// Creates a query service from atomic generation publication state.
+    #[must_use]
+    pub const fn new(generations: GenerationState<SearchEngine>) -> Self {
+        Self { generations }
+    }
+
+    /// Executes the single-room path only after read-your-writes admission succeeds.
+    pub fn search(
+        &self,
+        minimum_lsn: LogSequenceNumber,
+        query: &StayQuery<'_>,
+    ) -> Result<SearchResult, ServiceQueryError> {
+        let engine = self
+            .generations
+            .admit(minimum_lsn)
+            .map_err(ServiceQueryError::CannotProve)?;
+        engine.search(query).map_err(ServiceQueryError::Query)
+    }
+
+    /// Executes exact multi-room search against the admitted immutable generation.
+    pub fn search_multi_room(
+        &self,
+        minimum_lsn: LogSequenceNumber,
+        query: &MultiRoomStayQuery<'_>,
+    ) -> Result<MultiRoomSearchResult, ServiceQueryError> {
+        let engine = self
+            .generations
+            .admit(minimum_lsn)
+            .map_err(ServiceQueryError::CannotProve)?;
+        engine
+            .search_multi_room(query)
+            .map_err(ServiceQueryError::Query)
+    }
+}
+
+/// Stable typed failure at the process query boundary.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ServiceQueryError {
+    /// Runtime cannot prove that a generation is safe/current enough to serve.
+    CannotProve(CannotProveReason),
+    /// The admitted generation rejected the typed query itself.
+    Query(QueryError),
+}
+
+impl ServiceQueryError {
+    /// Stable machine-readable category for the Elixir/BFF boundary.
+    #[must_use]
+    pub const fn code(&self) -> &'static str {
+        match self {
+            Self::CannotProve(CannotProveReason::NotReady) => "not_ready",
+            Self::CannotProve(CannotProveReason::StaleProjection) => "stale_projection",
+            Self::CannotProve(CannotProveReason::CdcGap) => "cdc_gap",
+            Self::CannotProve(CannotProveReason::CorruptGeneration) => "corrupt_generation",
+            Self::CannotProve(CannotProveReason::VersionMismatch) => "version_mismatch",
+            Self::CannotProve(CannotProveReason::UnsupportedSemantics)
+            | Self::Query(QueryError::MissingRoomTopology(_)) => "unsupported_semantics",
+            Self::CannotProve(CannotProveReason::Overloaded) => "overloaded",
+            Self::CannotProve(CannotProveReason::InternalInvariantFailure) => {
+                "internal_invariant_failure"
+            }
+            Self::Query(_) => "query_rejected",
+        }
+    }
+}
+
+impl fmt::Display for ServiceQueryError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}: {self:?}", self.code())
+    }
+}
+
+impl std::error::Error for ServiceQueryError {}
 
 /// Parses the optional `VEYRA_BIND` value without touching process-global state.
 ///

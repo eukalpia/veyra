@@ -13,11 +13,13 @@ serde.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+veyra-query = { version = "0.1.0", path = "../veyra-query" }
 veyra-runtime = { version = "0.1.0", path = "../veyra-runtime" }
 veyra-types = { version = "0.1.0", path = "../veyra-types" }
 
 [dev-dependencies]
 tower.workspace = true
+veyra-party = { version = "0.1.0", path = "../veyra-party" }
 
 [lints]
 workspace = true

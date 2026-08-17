@@ -1514,6 +1514,8 @@ dependencies = [
  "tower",
  "tracing",
  "tracing-subscriber",
+ "veyra-party",
+ "veyra-query",
  "veyra-runtime",
  "veyra-types",
 ]
