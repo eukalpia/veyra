@@ -62,7 +62,9 @@ impl TransactionStream {
         xid: u32,
         final_lsn: veyra_types::LogSequenceNumber,
     ) -> Result<(), StreamError> {
-        self.builder.begin(xid, final_lsn).map_err(StreamError::from)
+        self.builder
+            .begin(xid, final_lsn)
+            .map_err(StreamError::from)
     }
 
     pub(crate) fn commit_transaction(

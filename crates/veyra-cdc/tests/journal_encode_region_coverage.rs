@@ -105,13 +105,18 @@ fn encode_bounds_fail_before_any_durable_acknowledgement() {
 #[test]
 fn sync_failure_and_missing_replay_path_never_advance_durable_state() {
     let mut null = Journal::open("/dev/null").unwrap_or_else(|_| unreachable!());
-    assert!(matches!(null.append(&small_batch()), Err(JournalError::Io(_))));
+    assert!(matches!(
+        null.append(&small_batch()),
+        Err(JournalError::Io(_))
+    ));
     assert_eq!(null.highest_commit_lsn(), LogSequenceNumber::ZERO);
 
     let file_path = path("missing-replay");
     let mut journal = Journal::open(&file_path).unwrap_or_else(|_| unreachable!());
     assert_eq!(
-        journal.append(&small_batch()).unwrap_or_else(|_| unreachable!()),
+        journal
+            .append(&small_batch())
+            .unwrap_or_else(|_| unreachable!()),
         ReplayDecision::Apply
     );
     remove(&file_path);
@@ -124,7 +129,9 @@ fn duplicated_durable_record_is_rejected_during_recovery() {
     {
         let mut journal = Journal::open(&file_path).unwrap_or_else(|_| unreachable!());
         assert_eq!(
-            journal.append(&small_batch()).unwrap_or_else(|_| unreachable!()),
+            journal
+                .append(&small_batch())
+                .unwrap_or_else(|_| unreachable!()),
             ReplayDecision::Apply
         );
     }

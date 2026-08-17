@@ -145,12 +145,11 @@ impl Rule {
                     .count();
                 count >= usize::from(*min_adults)
             }
-            Self::RequireGuardianForMinors { minor_below_age } => context
-                .occupants
-                .iter()
-                .all(|occupant| {
+            Self::RequireGuardianForMinors { minor_below_age } => {
+                context.occupants.iter().all(|occupant| {
                     occupant.age >= *minor_below_age || occupant.authorized_guardian_present
-                }),
+                })
+            }
             Self::And(children) => children
                 .iter()
                 .all(|child| child.evaluate_validated(context)),

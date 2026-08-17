@@ -186,11 +186,7 @@ pub fn process_replication_event<E>(
             let mut checkpointing_apply =
                 |batch: &TransactionBatch| apply_checkpointed(checkpoint, batch, apply);
             let (acknowledge_lsn, _) = processor
-                .commit_transaction(
-                    local_lsn(lsn),
-                    local_lsn(end_lsn),
-                    &mut checkpointing_apply,
-                )
+                .commit_transaction(local_lsn(lsn), local_lsn(end_lsn), &mut checkpointing_apply)
                 .map_err(LiveReplicationError::Processor)?;
             state.transaction_open = false;
             Ok(state.acknowledge(acknowledge_lsn))
