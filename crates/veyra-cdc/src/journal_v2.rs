@@ -1,7 +1,7 @@
 use core::fmt;
 use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
 use veyra_types::LogSequenceNumber;
@@ -417,6 +417,7 @@ impl From<io::Error> for JournalError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Seek, SeekFrom};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_path(label: &str) -> PathBuf {

@@ -97,7 +97,7 @@ impl DurableTransactionProcessor {
                 return Err(ProcessorError::Stream(error));
             }
         };
-        let (acknowledge_lsn, replay) = self.apply_durable_batch(batch, apply)?;
+        let (acknowledge_lsn, replay) = self.apply_durable_batch(&batch, apply)?;
         Ok(ProcessingOutcome::Applied {
             acknowledge_lsn,
             replay,
@@ -131,22 +131,22 @@ impl DurableTransactionProcessor {
                 return Err(ProcessorError::Stream(error));
             }
         };
-        self.apply_durable_batch(batch, apply)
+        self.apply_durable_batch(&batch, apply)
     }
 
     fn apply_durable_batch<E>(
         &mut self,
-        batch: TransactionBatch,
+        batch: &TransactionBatch,
         apply: &mut dyn FnMut(&TransactionBatch) -> Result<(), E>,
     ) -> Result<(LogSequenceNumber, ReplayDecision), ProcessorError<E>> {
-        let replay = match self.journal.append(&batch) {
+        let replay = match self.journal.append(batch) {
             Ok(replay) => replay,
             Err(error) => {
                 self.poisoned = true;
                 return Err(ProcessorError::Journal(error));
             }
         };
-        if let Err(error) = apply(&batch) {
+        if let Err(error) = apply(batch) {
             self.poisoned = true;
             return Err(ProcessorError::Apply(error));
         }
