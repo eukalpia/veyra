@@ -6,20 +6,37 @@ on:
       - agent/v1-production-completion
     paths:
       - .github/workflows/server-query-tdd.yml
-      - crates/veyra-server/tests/query_boundary.rs
+      - tools/staged/apply_server_query_boundary.py
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  query-boundary-red:
+  apply-and-verify:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
         with:
           ref: agent/v1-production-completion
       - name: Install pinned Rust
-        run: rustup toolchain install 1.97.1 --profile minimal
-      - name: Run typed query boundary regression
-        run: cargo test -p veyra-server --test query_boundary --locked -- --nocapture
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Install typed query boundary
+        run: python3 tools/staged/apply_server_query_boundary.py
+      - name: Synchronize workspace lockfile
+        run: cargo generate-lockfile
+      - name: Format workspace
+        run: cargo fmt --all
+      - name: Strict server clippy
+        run: cargo clippy -p veyra-server --all-targets --all-features --locked -- -D warnings
+      - name: Server tests
+        run: cargo test -p veyra-server --all-features --locked
+      - name: Commit verified typed query boundary
+        shell: bash
+        run: |
+          git rm tools/staged/apply_server_query_boundary.py .github/workflows/server-query-tdd.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock crates/veyra-server/Cargo.toml crates/veyra-server/src/lib.rs
+          git commit -m "feat: gate typed queries on atomic runtime generations"
+          git push origin HEAD:agent/v1-production-completion
