@@ -1,7 +1,5 @@
 use veyra_party::{AgeEvidence, BookingParty, CivilDate, Traveler, TravelerId};
-use veyra_query::{
-    MultiRoomStayQuery, SearchEngine, SolutionProfile, SolverConfig,
-};
+use veyra_query::{MultiRoomStayQuery, SearchEngine, SolutionProfile, SolverConfig};
 use veyra_runtime::{
     CannotProveReason, GenerationState, PublishedGeneration, RuntimeSnapshot,
 };
@@ -49,7 +47,8 @@ fn query_service_fails_closed_before_query_generation_is_ready() {
 
     let error = service
         .search_multi_room(LogSequenceNumber::ZERO, &query(&party))
-        .unwrap_err();
+        .err()
+        .unwrap_or_else(|| unreachable!());
 
     assert_eq!(
         error,
