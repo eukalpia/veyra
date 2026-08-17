@@ -13,6 +13,7 @@ fn dense_bitmap_cross_word_transitions_are_exact() {
     assert!(empty.is_empty());
     assert_eq!(empty.len(), 0);
     assert!(empty.room_ids().is_empty());
+    assert_eq!((&empty).into_iter().next(), None);
 
     for room in [0, 63, 64, 65, 127, 128, 129] {
         for day in 100..103 {
@@ -33,6 +34,10 @@ fn dense_bitmap_cross_word_transitions_are_exact() {
     assert!(!two_nights.contains(65));
     assert!(!two_nights.contains(130));
     assert_eq!(two_nights.room_ids(), vec![0, 63, 64, 127, 128, 129]);
+    assert_eq!(
+        (&two_nights).into_iter().collect::<Vec<_>>(),
+        vec![0, 63, 64, 127, 128, 129]
+    );
     assert_eq!(
         index
             .reference_available_for_stay(100, 102)
