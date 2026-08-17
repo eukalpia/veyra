@@ -6,20 +6,35 @@ on:
       - agent/v1-production-completion
     paths:
       - .github/workflows/solver-pruning-tdd.yml
-      - crates/veyra-solver/tests/pruning.rs
+      - tools/patches/v1-solver-pruning.patch
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  pruning-red:
+  apply-and-verify:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
         with:
           ref: agent/v1-production-completion
       - name: Install pinned Rust
-        run: rustup toolchain install 1.97.1 --profile minimal
-      - name: Run pruning regression
-        run: cargo test -p veyra-solver --test pruning --locked -- --nocapture
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Apply pruning implementation
+        run: git apply --check tools/patches/v1-solver-pruning.patch && git apply tools/patches/v1-solver-pruning.patch
+      - name: Format workspace
+        run: cargo fmt --all
+      - name: Strict solver clippy
+        run: cargo clippy -p veyra-solver --all-targets --all-features --locked -- -D warnings
+      - name: Solver tests
+        run: cargo test -p veyra-solver --all-features --locked
+      - name: Commit verified implementation
+        shell: bash
+        run: |
+          git rm tools/patches/v1-solver-pruning.patch .github/workflows/solver-pruning-tdd.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/veyra-solver/src/lib.rs
+          git commit -m "perf: prune impossible partial room assignments"
+          git push origin HEAD:agent/v1-production-completion
