@@ -8,6 +8,7 @@ on:
       - .github/workflows/server-query-tdd.yml
       - tools/staged/apply_server_query_boundary.py
       - tools/staged/fix_server_query_match.py
+      - crates/veyra-server/tests/query_boundary.rs
   workflow_dispatch:
 
 permissions:
