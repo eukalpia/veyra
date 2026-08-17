@@ -9,6 +9,7 @@ use core::fmt;
 
 pub const MAX_PRICE_DAYS: usize = 730;
 pub const MAX_QUOTE_NIGHTS: usize = 90;
+const MAX_QUOTE_NIGHTS_I64: i64 = 90;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct MoneyMicros(i64);
@@ -108,16 +109,28 @@ impl PriceVector {
         if nights_i64 <= 0 {
             return Err(PricingError::InvalidStay);
         }
-        let nights = usize::try_from(nights_i64).map_err(|_| PricingError::InvalidStay)?;
-        if nights > MAX_QUOTE_NIGHTS {
+        if nights_i64 > MAX_QUOTE_NIGHTS_I64 {
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "an i32 service-day difference is non-negative here and fits usize on supported targets"
+            )]
+            let nights = nights_i64 as usize;
             return Err(PricingError::StayTooLong(nights));
         }
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "the positive stay is bounded to MAX_QUOTE_NIGHTS above"
+        )]
+        let nights = nights_i64 as usize;
         let start_i64 = i64::from(check_in_day) - i64::from(self.start_day);
         if start_i64 < 0 {
             return Err(PricingError::OutsidePriceHorizon);
         }
         let start = usize::try_from(start_i64).map_err(|_| PricingError::OutsidePriceHorizon)?;
-        let end = start.checked_add(nights).ok_or(PricingError::Overflow)?;
+        // `start` is derived from i32 service-day keys and `nights <= 90`, so this cannot overflow.
+        let end = start + nights;
         let slice = self
             .nightly
             .get(start..end)
@@ -133,7 +146,11 @@ impl PriceVector {
             .per_adult_per_night
             .checked_mul(adults)?
             .checked_add(adjustment.per_child_per_night.checked_mul(children)?)?;
-        let night_count = u32::try_from(nights).map_err(|_| PricingError::Overflow)?;
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "quote nights are bounded to MAX_QUOTE_NIGHTS (90)"
+        )]
+        let night_count = nights as u32;
         let occupancy_adjustment = per_night.checked_mul(night_count)?;
         let total = base.checked_add(occupancy_adjustment)?;
         if total.get() < 0 {
