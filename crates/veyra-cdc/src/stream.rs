@@ -25,14 +25,14 @@ impl TransactionStream {
     ) -> Result<Option<TransactionBatch>, StreamError> {
         match message {
             PgOutputMessage::Begin { final_lsn, xid, .. } => {
-                self.builder.begin(xid, final_lsn)?;
+                self.begin_transaction(xid, final_lsn)?;
                 Ok(None)
             }
             PgOutputMessage::Commit {
                 commit_lsn,
                 end_lsn,
                 ..
-            } => Ok(Some(self.builder.commit(commit_lsn, end_lsn)?)),
+            } => self.commit_transaction(commit_lsn, end_lsn).map(Some),
             PgOutputMessage::Relation(metadata) => {
                 self.relations.insert(metadata.relation_id, metadata);
                 Ok(None)
@@ -55,6 +55,24 @@ impl TransactionStream {
                 Ok(None)
             }
         }
+    }
+
+    pub(crate) fn begin_transaction(
+        &mut self,
+        xid: u32,
+        final_lsn: veyra_types::LogSequenceNumber,
+    ) -> Result<(), StreamError> {
+        self.builder.begin(xid, final_lsn).map_err(StreamError::from)
+    }
+
+    pub(crate) fn commit_transaction(
+        &mut self,
+        commit_lsn: veyra_types::LogSequenceNumber,
+        end_lsn: veyra_types::LogSequenceNumber,
+    ) -> Result<TransactionBatch, StreamError> {
+        self.builder
+            .commit(commit_lsn, end_lsn)
+            .map_err(StreamError::from)
     }
 
     #[must_use]
