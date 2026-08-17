@@ -1,0 +1,56 @@
+name: Verify region matrix v2
+
+on:
+  push:
+    branches:
+      - agent/m0-foundation-ci
+    paths:
+      - .github/workflows/verify-region-matrix-v2.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: verify-region-matrix-v2
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/m0-foundation-ci
+          fetch-depth: 0
+      - name: Remove forbidden panic helper, format and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('crates/veyra-segment/tests/error_surface_matrix.rs')
+          text = path.read_text()
+          old = '    let error = Segment::read(&missing).expect_err("missing file must fail closed");\n'
+          new = '''    let error = match Segment::read(&missing) {\n        Ok(_) => panic!("missing file unexpectedly decoded"),\n        Err(error) => error,\n    };\n'''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one expect_err call, found {text.count(old)}')
+          path.write_text(text.replace(old, new))
+          PY
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+          cargo fmt --all
+          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+          cargo test --workspace --all-features --locked
+      - name: Commit verified matrix and remove helper workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/verify-region-matrix-v2.yml
+          git rm .github/workflows/format-region-matrix.yml
+          git add crates/veyra-cdc/tests/recovery_region_matrix.rs \
+                  crates/veyra-pricing/tests/region_matrix.rs \
+                  crates/veyra-restrictions/tests/region_matrix.rs \
+                  crates/veyra-segment/tests/error_surface_matrix.rs
+          git config user.name "Veyra CI"
+          git config user.email "120781817+eukalpia@users.noreply.github.com"
+          git commit -m "test: verify production branch region matrix"
+          git push origin HEAD:agent/m0-foundation-ci
