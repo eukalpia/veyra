@@ -79,14 +79,17 @@ impl CivilDate {
         if date < self {
             return Err(PartyError::CheckInBeforeBirth);
         }
-        let mut years = date.year - self.year;
+        let mut years = date
+            .year
+            .checked_sub(self.year)
+            .ok_or(PartyError::AgeOutOfRange)?;
         if (date.month, date.day) < (self.month, self.day) {
-            years -= 1;
+            years = years.checked_sub(1).ok_or(PartyError::AgeOutOfRange)?;
         }
         if years > i32::from(MAX_AGE) {
             return Err(PartyError::AgeOutOfRange);
         }
-        Ok(years as u16)
+        u16::try_from(years).map_err(|_| PartyError::AgeOutOfRange)
     }
 }
 
