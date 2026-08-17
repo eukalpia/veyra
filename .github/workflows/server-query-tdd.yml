@@ -1,0 +1,25 @@
+name: Server query TDD gate
+
+on:
+  push:
+    branches:
+      - agent/v1-production-completion
+    paths:
+      - .github/workflows/server-query-tdd.yml
+      - crates/veyra-server/tests/query_boundary.rs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  query-boundary-red:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/v1-production-completion
+      - name: Install pinned Rust
+        run: rustup toolchain install 1.97.1 --profile minimal
+      - name: Run typed query boundary regression
+        run: cargo test -p veyra-server --test query_boundary --locked -- --nocapture
