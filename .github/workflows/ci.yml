@@ -28,10 +28,10 @@ jobs:
       - name: Install pinned stable Rust
         run: rustup toolchain install ${{ env.VEYRA_RUST_VERSION }} --profile minimal
       - name: Verify workspace lockfile
-        run: cargo metadata --locked --format-version 1 --no-deps
+        run: cargo metadata --locked --format-version 1
       - name: Verify fuzz lockfile
         working-directory: fuzz
-        run: cargo metadata --locked --format-version 1 --no-deps
+        run: cargo metadata --locked --format-version 1
 
   portable:
     name: Portable / ${{ matrix.target }}
@@ -165,7 +165,7 @@ jobs:
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
       - name: Verify locked dependency graph
-        run: cargo metadata --locked --format-version 1 --no-deps
+        run: cargo metadata --locked --format-version 1
       - name: Deny policy
         run: cargo deny check
       - name: Advisory audit
@@ -209,7 +209,7 @@ jobs:
         run: cargo install cargo-fuzz --locked
       - name: Verify fuzz lockfile
         working-directory: fuzz
-        run: cargo metadata --locked --format-version 1 --no-deps
+        run: cargo metadata --locked --format-version 1
       - name: Run bounded fuzz smoke
         working-directory: fuzz
         run: cargo +nightly fuzz run projection_progress -- -runs=512
