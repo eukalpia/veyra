@@ -6,6 +6,7 @@ on:
       - agent/v1-production-completion
     paths:
       - .github/workflows/apply-v1-solver-pricing.yml
+      - tools/patches/v1-solver-pricing.patch
   workflow_dispatch:
 
 permissions:
