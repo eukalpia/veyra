@@ -1,0 +1,25 @@
+name: Query spatial TDD gate
+
+on:
+  push:
+    branches:
+      - agent/v1-production-completion
+    paths:
+      - .github/workflows/query-spatial-tdd.yml
+      - crates/veyra-query/tests/spatial_multi_room.rs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  spatial-red:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/v1-production-completion
+      - name: Install pinned Rust
+        run: rustup toolchain install 1.97.1 --profile minimal
+      - name: Run spatial query regression
+        run: cargo test -p veyra-query --test spatial_multi_room --locked -- --nocapture
