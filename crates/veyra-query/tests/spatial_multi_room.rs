@@ -8,7 +8,9 @@ use veyra_query::{
     MultiRoomStayQuery, QueryError, RoomDocument, RoomPlacement, RoomSpatialProjection,
     RoomTopologyEdge, RoomTopologyRelation, SearchEngine, SolutionProfile, SolverConfig,
 };
-use veyra_restrictions::{RESTRICTION_SCHEMA_V1, compile as compile_restrictions};
+use veyra_restrictions::{
+    RESTRICTION_SCHEMA_V1, RestrictionRule, compile as compile_restrictions,
+};
 use veyra_rule_compiler::{RULE_SCHEMA_V1, compile as compile_rule};
 use veyra_rules::Rule;
 
@@ -60,8 +62,11 @@ fn room(room_id: u32) -> RoomDocument {
             ]),
         )
         .unwrap_or_else(|_| unreachable!()),
-        restrictions: compile_restrictions(RESTRICTION_SCHEMA_V1, &[])
-            .unwrap_or_else(|_| unreachable!()),
+        restrictions: compile_restrictions(
+            RESTRICTION_SCHEMA_V1,
+            &[RestrictionRule::MinStay(1)],
+        )
+        .unwrap_or_else(|_| unreachable!()),
         prices: PriceVector::try_new(10, vec![money(100)], 1)
             .unwrap_or_else(|_| unreachable!()),
         occupancy_adjustment: OccupancyAdjustment {
