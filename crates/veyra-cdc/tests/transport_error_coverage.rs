@@ -27,15 +27,13 @@ async fn refused_local_connection_preserves_transport_error_context() {
         "veyra_test_slot",
         "veyra_test_publication",
     )
-    .with_port(1);
+    .with_port(0);
     let mut apply = |_batch: &TransactionBatch| -> Result<(), std::convert::Infallible> { Ok(()) };
 
-    let result = run_pgwire(config, &journal_path, &checkpoint_path, &mut apply).await;
-    let Err(error) = result else {
-        let _ = std::fs::remove_file(journal_path);
-        let _ = std::fs::remove_file(checkpoint_path);
-        return;
-    };
+    let error = run_pgwire(config, &journal_path, &checkpoint_path, &mut apply)
+        .await
+        .err()
+        .unwrap_or_else(|| unreachable!());
     assert!(matches!(error, LiveReplicationError::Transport(_)));
     assert!(error.to_string().contains("transport:"));
 
