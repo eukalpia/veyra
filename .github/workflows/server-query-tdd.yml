@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/server-query-tdd.yml
       - tools/staged/apply_server_query_boundary.py
+      - tools/staged/fix_server_query_match.py
   workflow_dispatch:
 
 permissions:
@@ -22,7 +23,9 @@ jobs:
       - name: Install pinned Rust
         run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
       - name: Install typed query boundary
-        run: python3 tools/staged/apply_server_query_boundary.py
+        run: |
+          python3 tools/staged/apply_server_query_boundary.py
+          python3 tools/staged/fix_server_query_match.py
       - name: Synchronize workspace lockfile
         run: cargo generate-lockfile
       - name: Format workspace
@@ -34,7 +37,7 @@ jobs:
       - name: Commit verified typed query boundary
         shell: bash
         run: |
-          git rm tools/staged/apply_server_query_boundary.py .github/workflows/server-query-tdd.yml
+          git rm tools/staged/apply_server_query_boundary.py tools/staged/fix_server_query_match.py .github/workflows/server-query-tdd.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Cargo.lock crates/veyra-server/Cargo.toml crates/veyra-server/src/lib.rs
