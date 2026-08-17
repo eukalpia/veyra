@@ -1524,6 +1524,7 @@ dependencies = [
 name = "veyra-solver"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "veyra-occupancy",
  "veyra-party",
  "veyra-pricing",
