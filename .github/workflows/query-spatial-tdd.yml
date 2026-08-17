@@ -8,6 +8,7 @@ on:
       - .github/workflows/query-spatial-tdd.yml
       - tools/staged/apply_query_spatial.py
       - tools/staged/fix_query_spatial_edges.py
+      - crates/veyra-query/tests/spatial_multi_room.rs
   workflow_dispatch:
 
 permissions:
