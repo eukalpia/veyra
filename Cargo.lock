@@ -1456,6 +1456,7 @@ dependencies = [
  "veyra-restrictions",
  "veyra-rule-compiler",
  "veyra-rules",
+ "veyra-solver",
 ]
 
 [[package]]

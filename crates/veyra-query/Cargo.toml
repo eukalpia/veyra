@@ -15,6 +15,7 @@ veyra-pricing = { version = "0.1.0", path = "../veyra-pricing" }
 veyra-ranking = { version = "0.1.0", path = "../veyra-ranking" }
 veyra-restrictions = { version = "0.1.0", path = "../veyra-restrictions" }
 veyra-rule-compiler = { version = "0.1.0", path = "../veyra-rule-compiler" }
+veyra-solver = { version = "0.1.0", path = "../veyra-solver" }
 
 [dev-dependencies]
 veyra-rules = { version = "0.1.0", path = "../veyra-rules" }
