@@ -97,6 +97,48 @@ impl DurableTransactionProcessor {
                 return Err(ProcessorError::Stream(error));
             }
         };
+        let (acknowledge_lsn, replay) = self.apply_durable_batch(batch, apply)?;
+        Ok(ProcessingOutcome::Applied {
+            acknowledge_lsn,
+            replay,
+        })
+    }
+
+    pub(crate) fn begin_transaction<E>(
+        &mut self,
+        xid: u32,
+        final_lsn: LogSequenceNumber,
+    ) -> Result<(), ProcessorError<E>> {
+        self.ensure_usable()?;
+        if let Err(error) = self.stream.begin_transaction(xid, final_lsn) {
+            self.poisoned = true;
+            return Err(ProcessorError::Stream(error));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn commit_transaction<E>(
+        &mut self,
+        commit_lsn: LogSequenceNumber,
+        end_lsn: LogSequenceNumber,
+        apply: &mut dyn FnMut(&TransactionBatch) -> Result<(), E>,
+    ) -> Result<(LogSequenceNumber, ReplayDecision), ProcessorError<E>> {
+        self.ensure_usable()?;
+        let batch = match self.stream.commit_transaction(commit_lsn, end_lsn) {
+            Ok(batch) => batch,
+            Err(error) => {
+                self.poisoned = true;
+                return Err(ProcessorError::Stream(error));
+            }
+        };
+        self.apply_durable_batch(batch, apply)
+    }
+
+    fn apply_durable_batch<E>(
+        &mut self,
+        batch: TransactionBatch,
+        apply: &mut dyn FnMut(&TransactionBatch) -> Result<(), E>,
+    ) -> Result<(LogSequenceNumber, ReplayDecision), ProcessorError<E>> {
         let replay = match self.journal.append(&batch) {
             Ok(replay) => replay,
             Err(error) => {
@@ -108,10 +150,7 @@ impl DurableTransactionProcessor {
             self.poisoned = true;
             return Err(ProcessorError::Apply(error));
         }
-        Ok(ProcessingOutcome::Applied {
-            acknowledge_lsn: batch.end_lsn(),
-            replay,
-        })
+        Ok((batch.end_lsn(), replay))
     }
 
     /// Replays every durable transaction after process restart before live WAL is acknowledged.
