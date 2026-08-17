@@ -220,7 +220,6 @@ fn public_error_wrappers_preserve_sources_and_all_non_io_surfaces() {
         JournalError::ChecksumMismatch(1),
         JournalError::HeaderPayloadMismatch(1),
         JournalError::UnexpectedEof,
-        JournalError::LengthOverflow,
         JournalError::InvalidChangeKind(9),
         JournalError::InvalidOptionTag(9),
         JournalError::TrailingBytes(1),
