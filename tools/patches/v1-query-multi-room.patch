@@ -41,7 +41,7 @@
  
  pub const MAX_QUERY_PARTY: usize = 64;
  
-@@ -159,6 +164,137 @@
+@@ -159,6 +164,82 @@
          explain.returned = hits.len();
          Ok(SearchResult { hits, explain })
      }
@@ -62,45 +62,49 @@
 +            .map_err(QueryError::Availability)?;
 +        let check_in_day = query.check_in_day_i32()?;
 +        let check_out_day = query.check_out_day_i32()?;
++        let mut explain = MultiRoomQueryExplain::new(self.rooms.len(), available.len());
++        let grouped = self.collect_multi_room_candidates(
++            query,
++            check_in_day,
++            check_out_day,
++            &available,
++            &mut explain,
++        )?;
++        let mut hits =
++            solve_multi_room_properties(query, check_in_day, check_out_day, grouped, &mut explain)?;
++        hits.sort_by(|left, right| compare_multi_room_hits(left, right, query.profile));
++        hits.truncate(query.limit);
++        explain.returned = hits.len();
++        Ok(MultiRoomSearchResult { hits, explain })
++    }
++
++    fn collect_multi_room_candidates(
++        &self,
++        query: &MultiRoomStayQuery<'_>,
++        check_in_day: i32,
++        check_out_day: i32,
++        available: &[u32],
++        explain: &mut MultiRoomQueryExplain,
++    ) -> Result<BTreeMap<u32, Vec<PricedRoomOffer>>, QueryError> {
 +        let zero_adjustment = OccupancyAdjustment {
 +            per_adult_per_night: MoneyMicros::signed(0),
 +            per_child_per_night: MoneyMicros::signed(0),
 +        };
-+
-+        let mut explain = MultiRoomQueryExplain {
-+            initial_room_count: self.rooms.len(),
-+            available_candidates: available.len(),
-+            destination_candidates: 0,
-+            restriction_candidates: 0,
-+            properties_considered: 0,
-+            properties_solved: 0,
-+            infeasible_properties: 0,
-+            budget_rejected_properties: 0,
-+            solver_states_explored: 0,
-+            valid_solutions_seen: 0,
-+            returned: 0,
-+        };
 +        let mut grouped = BTreeMap::<u32, Vec<PricedRoomOffer>>::new();
-+
-+        for room_id in &available {
++        for &room_id in available {
 +            let room = &self.rooms[room_id as usize];
 +            if room.destination_id != query.destination_id {
 +                continue;
 +            }
 +            explain.destination_candidates += 1;
-+
 +            match room.restrictions.validate_stay(check_in_day, check_out_day) {
 +                Ok(_) => explain.restriction_candidates += 1,
 +                Err(error) if is_restriction_rejection(error) => continue,
 +                Err(error) => return Err(QueryError::Restrictions(error)),
 +            }
-+
-+            // Preflight the complete base-price horizon for every candidate. Otherwise a room with
-+            // missing prices could be skipped by the winning allocation and hide an unknown optimum.
 +            room.prices
 +                .quote(check_in_day, check_out_day, 0, 0, zero_adjustment)
 +                .map_err(QueryError::Pricing)?;
-+
 +            grouped
 +                .entry(room.property_id)
 +                .or_default()
@@ -108,78 +112,19 @@
 +                    room_id: room.room_id,
 +                    prices: room.prices.clone(),
 +                    occupancy_adjustment: room.occupancy_adjustment,
-+                    // Floor/building stay neutral only because validation rejects every intent that
-+                    // would require those absent projection dimensions.
 +                    floor: 0,
 +                    building: 0,
 +                    adult_age: room.adult_age,
 +                    occupancy_rule: room.occupancy_rule.clone(),
 +                });
 +        }
-+
-+        let mut hits = Vec::new();
-+        for (property_id, offers) in grouped {
-+            explain.properties_considered += 1;
-+            if offers.len() > HARD_MAX_ROOMS {
-+                return Err(QueryError::SolverRoomLimit {
-+                    property_id,
-+                    rooms: offers.len(),
-+                });
-+            }
-+            let solved = solve_priced(
-+                query.party,
-+                query.check_in_date,
-+                check_in_day,
-+                check_out_day,
-+                &offers,
-+                query.solver,
-+            )
-+            .map_err(QueryError::Solver)?;
-+            explain.solver_states_explored = explain
-+                .solver_states_explored
-+                .checked_add(solved.explored_states)
-+                .ok_or(QueryError::ExplainOverflow)?;
-+            explain.valid_solutions_seen = explain
-+                .valid_solutions_seen
-+                .checked_add(solved.valid_solution_count)
-+                .ok_or(QueryError::ExplainOverflow)?;
-+
-+            if solved.valid_solution_count == 0 {
-+                explain.infeasible_properties += 1;
-+                continue;
-+            }
-+            let tagged = solved
-+                .solutions
-+                .iter()
-+                .find(|candidate| candidate.profile == query.profile)
-+                .ok_or(QueryError::SolverProfileMissing(query.profile))?;
-+            explain.properties_solved += 1;
-+
-+            if query
-+                .budget
-+                .is_some_and(|budget| tagged.solution.total_price > budget)
-+            {
-+                explain.budget_rejected_properties += 1;
-+                continue;
-+            }
-+            hits.push(MultiRoomSearchHit {
-+                property_id,
-+                rooms: tagged.solution.rooms.clone(),
-+                projected_price: tagged.solution.total_price,
-+                soft_penalty: tagged.solution.soft_penalty,
-+                profile: tagged.profile,
-+            });
-+        }
-+
-+        hits.sort_by(|left, right| compare_multi_room_hits(left, right, query.profile));
-+        hits.truncate(query.limit);
-+        explain.returned = hits.len();
-+        Ok(MultiRoomSearchResult { hits, explain })
++        Ok(grouped)
 +    }
++
  }
  
  #[derive(Clone, Copy, Debug)]
-@@ -185,6 +321,59 @@
+@@ -185,6 +266,77 @@
      }
  }
  
@@ -230,6 +175,24 @@
 +    pub returned: usize,
 +}
 +
++impl MultiRoomQueryExplain {
++    const fn new(initial_room_count: usize, available_candidates: usize) -> Self {
++        Self {
++            initial_room_count,
++            available_candidates,
++            destination_candidates: 0,
++            restriction_candidates: 0,
++            properties_considered: 0,
++            properties_solved: 0,
++            infeasible_properties: 0,
++            budget_rejected_properties: 0,
++            solver_states_explored: 0,
++            valid_solutions_seen: 0,
++            returned: 0,
++        }
++    }
++}
++
 +#[derive(Clone, Debug, Eq, PartialEq)]
 +pub struct MultiRoomSearchResult {
 +    pub hits: Vec<MultiRoomSearchHit>,
@@ -239,10 +202,71 @@
  #[derive(Clone, Copy, Debug, Eq, PartialEq)]
  pub struct SearchHit {
      pub property_id: u32,
-@@ -230,6 +419,59 @@
+@@ -230,6 +382,120 @@
      Ok(())
  }
  
++fn solve_multi_room_properties(
++    query: &MultiRoomStayQuery<'_>,
++    check_in_day: i32,
++    check_out_day: i32,
++    grouped: BTreeMap<u32, Vec<PricedRoomOffer>>,
++    explain: &mut MultiRoomQueryExplain,
++) -> Result<Vec<MultiRoomSearchHit>, QueryError> {
++    let mut hits = Vec::new();
++    for (property_id, offers) in grouped {
++        explain.properties_considered += 1;
++        if offers.len() > HARD_MAX_ROOMS {
++            return Err(QueryError::SolverRoomLimit {
++                property_id,
++                rooms: offers.len(),
++            });
++        }
++        let solved = solve_priced(
++            query.party,
++            query.check_in_date,
++            check_in_day,
++            check_out_day,
++            &offers,
++            query.solver,
++        )
++        .map_err(QueryError::Solver)?;
++        explain.solver_states_explored = explain
++            .solver_states_explored
++            .checked_add(solved.explored_states)
++            .ok_or(QueryError::ExplainOverflow)?;
++        explain.valid_solutions_seen = explain
++            .valid_solutions_seen
++            .checked_add(solved.valid_solution_count)
++            .ok_or(QueryError::ExplainOverflow)?;
++        if solved.valid_solution_count == 0 {
++            explain.infeasible_properties += 1;
++            continue;
++        }
++        let tagged = solved
++            .solutions
++            .iter()
++            .find(|candidate| candidate.profile == query.profile)
++            .ok_or(QueryError::SolverProfileMissing(query.profile))?;
++        explain.properties_solved += 1;
++        if query
++            .budget
++            .is_some_and(|budget| tagged.solution.total_price > budget)
++        {
++            explain.budget_rejected_properties += 1;
++            continue;
++        }
++        hits.push(MultiRoomSearchHit {
++            property_id,
++            rooms: tagged.solution.rooms.clone(),
++            projected_price: tagged.solution.total_price,
++            soft_penalty: tagged.solution.soft_penalty,
++            profile: tagged.profile,
++        });
++    }
++    Ok(hits)
++}
++
 +fn validate_multi_room_query(query: &MultiRoomStayQuery<'_>) -> Result<(), QueryError> {
 +    if query.limit == 0 || query.limit > MAX_TOP_K {
 +        return Err(QueryError::InvalidLimit(query.limit));
@@ -299,7 +323,7 @@
  fn is_restriction_rejection(error: RestrictionError) -> bool {
      matches!(
          error,
-@@ -275,6 +517,12 @@
+@@ -275,6 +541,12 @@
      Occupancy(OccupancyError),
      Pricing(PricingError),
      Ranking(RankingError),
