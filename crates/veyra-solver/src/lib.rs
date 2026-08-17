@@ -13,6 +13,9 @@ use veyra_party::{BookingParty, CivilDate, ConstraintStrength, RoomingRelation, 
 use veyra_pricing::{MoneyMicros, OccupancyAdjustment, PriceVector, PricingError};
 use veyra_rule_compiler::CompiledRule;
 
+mod topology;
+pub use topology::{RoomRelationIndex, RoomTopologyEdge, RoomTopologyRelation, TopologyError};
+
 pub const HARD_MAX_TRAVELERS: usize = 16;
 pub const HARD_MAX_ROOMS: usize = 8;
 pub const HARD_MAX_STATES: usize = 200_000;
@@ -105,7 +108,7 @@ pub fn solve(
             price: PriceSource::Static(offer.projected_price),
         })
         .collect::<Vec<_>>();
-    solve_prepared(party, check_in, prepared, config)
+    solve_prepared(party, check_in, prepared, None, config)
 }
 
 /// Solves a multi-room stay and computes each used room price from the actual occupancy assigned
@@ -140,7 +143,42 @@ pub fn solve_priced(
             },
         })
         .collect::<Vec<_>>();
-    solve_prepared(party, check_in, prepared, config)
+    solve_prepared(party, check_in, prepared, None, config)
+}
+
+/// Pricing-safe exact solve with a complete explicit room-topology projection.
+pub fn solve_priced_with_topology(
+    party: &BookingParty,
+    check_in: CivilDate,
+    check_in_day: i32,
+    check_out_day: i32,
+    offers: &[PricedRoomOffer],
+    topology: &RoomRelationIndex,
+    config: SolverConfig,
+) -> Result<SolverResult, SolverError> {
+    if check_out_day <= check_in_day {
+        return Err(SolverError::InvalidStayRange);
+    }
+    let window = PricingWindow {
+        check_in_day,
+        check_out_day,
+    };
+    let prepared = offers
+        .iter()
+        .map(|offer| PreparedOffer {
+            room_id: offer.room_id,
+            floor: offer.floor,
+            building: offer.building,
+            adult_age: offer.adult_age,
+            occupancy_rule: &offer.occupancy_rule,
+            price: PriceSource::Dynamic {
+                prices: &offer.prices,
+                adjustment: offer.occupancy_adjustment,
+                window,
+            },
+        })
+        .collect::<Vec<_>>();
+    solve_prepared(party, check_in, prepared, Some(topology), config)
 }
 
 #[derive(Clone, Copy)]
@@ -194,18 +232,20 @@ fn solve_prepared(
     party: &BookingParty,
     check_in: CivilDate,
     offers: Vec<PreparedOffer<'_>>,
+    topology: Option<&RoomRelationIndex>,
     config: SolverConfig,
 ) -> Result<SolverResult, SolverError> {
     let travelers = party
         .travelers()
         .map(veyra_party::Traveler::id)
         .collect::<Vec<_>>();
-    validate_input(party, &travelers, &offers, config)?;
+    validate_input(party, &travelers, &offers, topology, config)?;
 
     let mut context = SearchContext {
         party,
         check_in,
         offers,
+        topology,
         config,
         travelers,
         assignments: Vec::new(),
@@ -257,6 +297,7 @@ fn validate_input(
     party: &BookingParty,
     travelers: &[TravelerId],
     offers: &[PreparedOffer<'_>],
+    topology: Option<&RoomRelationIndex>,
     config: SolverConfig,
 ) -> Result<(), SolverError> {
     if travelers.len() > HARD_MAX_TRAVELERS {
@@ -284,18 +325,27 @@ fn validate_input(
             return Err(SolverError::DuplicateRoomId(offer.room_id));
         }
     }
-    for intent in party
-        .rooming_intents()
-        .iter()
-        .filter(|intent| intent.strength == ConstraintStrength::Must)
-    {
-        if matches!(
-            intent.relation,
-            RoomingRelation::Near
-                | RoomingRelation::ConnectedRooms
-                | RoomingRelation::AdjacentRooms
-        ) {
-            return Err(SolverError::UnsupportedHardConstraint(intent.relation));
+    if let Some(index) = topology {
+        for offer in offers {
+            if !index.contains_room(offer.room_id) {
+                return Err(SolverError::TopologyMissingRoom(offer.room_id));
+            }
+        }
+    }
+    if topology.is_none() {
+        for intent in party.rooming_intents() {
+            if matches!(
+                intent.relation,
+                RoomingRelation::Near
+                    | RoomingRelation::ConnectedRooms
+                    | RoomingRelation::AdjacentRooms
+            ) {
+                return Err(if intent.strength == ConstraintStrength::Must {
+                    SolverError::UnsupportedHardConstraint(intent.relation)
+                } else {
+                    SolverError::UnsupportedPreference(intent.relation)
+                });
+            }
         }
     }
     Ok(())
@@ -305,6 +355,7 @@ struct SearchContext<'a> {
     party: &'a BookingParty,
     check_in: CivilDate,
     offers: Vec<PreparedOffer<'a>>,
+    topology: Option<&'a RoomRelationIndex>,
     config: SolverConfig,
     travelers: Vec<TravelerId>,
     assignments: Vec<usize>,
@@ -389,15 +440,7 @@ fn layout_hard_constraints_hold(context: &SearchContext<'_>) -> Result<bool, Sol
     {
         let left = assignment_of(context, intent.left)?;
         let right = assignment_of(context, intent.right)?;
-        let left_offer = &context.offers[left];
-        let right_offer = &context.offers[right];
-        let valid = match intent.relation {
-            RoomingRelation::SameRoom => left == right,
-            RoomingRelation::SeparateRoom => left != right,
-            RoomingRelation::SameFloor => left_offer.floor == right_offer.floor,
-            RoomingRelation::SameBuilding => left_offer.building == right_offer.building,
-            relation => return Err(SolverError::UnsupportedHardConstraint(relation)),
-        };
+        let valid = relation_satisfied(context, left, right, intent.relation)?;
         if !valid {
             return Ok(false);
         }
@@ -428,20 +471,47 @@ fn partial_hard_constraints_hold(context: &SearchContext<'_>) -> Result<bool, So
         let Some(right) = context.assignments.get(right_position).copied() else {
             continue;
         };
-        let left_offer = &context.offers[left];
-        let right_offer = &context.offers[right];
-        let valid = match intent.relation {
-            RoomingRelation::SameRoom => left == right,
-            RoomingRelation::SeparateRoom => left != right,
-            RoomingRelation::SameFloor => left_offer.floor == right_offer.floor,
-            RoomingRelation::SameBuilding => left_offer.building == right_offer.building,
-            relation => return Err(SolverError::UnsupportedHardConstraint(relation)),
-        };
+        let valid = relation_satisfied(context, left, right, intent.relation)?;
         if !valid {
             return Ok(false);
         }
     }
     Ok(true)
+}
+
+fn relation_satisfied(
+    context: &SearchContext<'_>,
+    left: usize,
+    right: usize,
+    relation: RoomingRelation,
+) -> Result<bool, SolverError> {
+    let left_offer = &context.offers[left];
+    let right_offer = &context.offers[right];
+    let topology = || context.topology.ok_or(SolverError::InternalInvariant);
+    match relation {
+        RoomingRelation::SameRoom => Ok(left == right),
+        RoomingRelation::SeparateRoom => Ok(left != right),
+        RoomingRelation::SameFloor => Ok(left_offer.floor == right_offer.floor),
+        RoomingRelation::SameBuilding => Ok(left_offer.building == right_offer.building),
+        RoomingRelation::Near => Ok(left == right
+            || topology()?.contains(
+                RoomTopologyRelation::Near,
+                left_offer.room_id,
+                right_offer.room_id,
+            )),
+        RoomingRelation::AdjacentRooms => Ok(left != right
+            && topology()?.contains(
+                RoomTopologyRelation::Adjacent,
+                left_offer.room_id,
+                right_offer.room_id,
+            )),
+        RoomingRelation::ConnectedRooms => Ok(left != right
+            && topology()?.contains(
+                RoomTopologyRelation::Connected,
+                left_offer.room_id,
+                right_offer.room_id,
+            )),
+    }
 }
 
 fn layout_soft_penalty(context: &SearchContext<'_>) -> Result<u32, SolverError> {
@@ -454,15 +524,7 @@ fn layout_soft_penalty(context: &SearchContext<'_>) -> Result<u32, SolverError> 
     {
         let left = assignment_of(context, intent.left)?;
         let right = assignment_of(context, intent.right)?;
-        let left_offer = &context.offers[left];
-        let right_offer = &context.offers[right];
-        let satisfied = match intent.relation {
-            RoomingRelation::SameRoom => left == right,
-            RoomingRelation::SeparateRoom => left != right,
-            RoomingRelation::SameFloor => left_offer.floor == right_offer.floor,
-            RoomingRelation::SameBuilding => left_offer.building == right_offer.building,
-            relation => return Err(SolverError::UnsupportedPreference(relation)),
-        };
+        let satisfied = relation_satisfied(context, left, right, intent.relation)?;
         let violated = if intent.strength == ConstraintStrength::Prefer {
             !satisfied
         } else {
@@ -540,6 +602,7 @@ pub enum SolverError {
     InvalidAdultAge(u32),
     NegativeRoomPrice(u32),
     DuplicateRoomId(u32),
+    TopologyMissingRoom(u32),
     StateBudgetExhausted,
     TooManyValidSolutions(usize),
     UnsupportedHardConstraint(RoomingRelation),
