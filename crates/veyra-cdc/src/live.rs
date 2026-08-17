@@ -8,7 +8,7 @@ use pgwire_replication::{
 use veyra_types::LogSequenceNumber;
 
 use crate::{
-    AppliedCheckpoint, CheckpointError, DurableTransactionProcessor, JournalError, PgOutputMessage,
+    AppliedCheckpoint, CheckpointError, DurableTransactionProcessor, JournalError,
     ProcessingOutcome, ProcessorError, TransactionBatch,
 };
 
@@ -150,27 +150,11 @@ pub fn process_replication_event<E>(
             state.observe_received(wal_end);
             Ok(LiveEventOutcome::Continue)
         }
-        ReplicationEvent::Begin {
-            final_lsn,
-            xid,
-            commit_time_micros,
-        } => {
+        ReplicationEvent::Begin { final_lsn, xid, .. } => {
             state.observe_received(final_lsn);
-            let mut checkpointing_apply =
-                |batch: &TransactionBatch| apply_checkpointed(checkpoint, batch, apply);
-            let outcome = processor
-                .consume_message(
-                    PgOutputMessage::Begin {
-                        final_lsn: local_lsn(final_lsn),
-                        commit_timestamp_micros: commit_time_micros,
-                        xid,
-                    },
-                    &mut checkpointing_apply,
-                )
+            processor
+                .begin_transaction::<CheckpointApplyError<E>>(xid, local_lsn(final_lsn))
                 .map_err(LiveReplicationError::Processor)?;
-            if outcome != ProcessingOutcome::Pending {
-                return Err(LiveReplicationError::UnexpectedBoundaryOutcome);
-            }
             state.transaction_open = true;
             Ok(LiveEventOutcome::Continue)
         }
@@ -197,34 +181,19 @@ pub fn process_replication_event<E>(
                 }
             }
         }
-        ReplicationEvent::Commit {
-            lsn,
-            end_lsn,
-            commit_time_micros,
-        } => {
+        ReplicationEvent::Commit { lsn, end_lsn, .. } => {
             state.observe_received(end_lsn);
             let mut checkpointing_apply =
                 |batch: &TransactionBatch| apply_checkpointed(checkpoint, batch, apply);
-            let outcome = processor
-                .consume_message(
-                    PgOutputMessage::Commit {
-                        flags: 0,
-                        commit_lsn: local_lsn(lsn),
-                        end_lsn: local_lsn(end_lsn),
-                        commit_timestamp_micros: commit_time_micros,
-                    },
+            let (acknowledge_lsn, _) = processor
+                .commit_transaction(
+                    local_lsn(lsn),
+                    local_lsn(end_lsn),
                     &mut checkpointing_apply,
                 )
                 .map_err(LiveReplicationError::Processor)?;
-            match outcome {
-                ProcessingOutcome::Applied {
-                    acknowledge_lsn, ..
-                } => {
-                    state.transaction_open = false;
-                    Ok(state.acknowledge(acknowledge_lsn))
-                }
-                ProcessingOutcome::Pending => Err(LiveReplicationError::UnexpectedBoundaryOutcome),
-            }
+            state.transaction_open = false;
+            Ok(state.acknowledge(acknowledge_lsn))
         }
         ReplicationEvent::Message { prefix, .. } => {
             Err(LiveReplicationError::UnsupportedLogicalMessage(prefix))
@@ -379,7 +348,6 @@ pub enum LiveReplicationError<E> {
     Transport(PgWireError),
     UnsupportedLogicalMessage(String),
     StoppedMidTransaction(LogSequenceNumber),
-    UnexpectedBoundaryOutcome,
 }
 
 impl<E> fmt::Display for LiveReplicationError<E>
@@ -400,9 +368,6 @@ where
             }
             Self::StoppedMidTransaction(lsn) => {
                 write!(formatter, "replication stopped mid-transaction at {lsn:?}")
-            }
-            Self::UnexpectedBoundaryOutcome => {
-                formatter.write_str("unexpected transaction-boundary processing outcome")
             }
         }
     }
