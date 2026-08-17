@@ -227,6 +227,59 @@ fn guardian_rooming_limits_and_reversed_contradictions_are_enforced() {
 }
 
 #[test]
+fn duplicate_limits_and_right_side_unknown_edges_preserve_invariants() {
+    let mut relationships = full_builder();
+    let mut inserted = Vec::new();
+    'fill: for from in 1..=64 {
+        for to in 1..=64 {
+            if from == to {
+                continue;
+            }
+            let edge = Relationship {
+                from: TravelerId::new(from),
+                to: TravelerId::new(to),
+                kind: RelationshipKind::Companion,
+            };
+            relationships
+                .add_relationship(edge)
+                .unwrap_or_else(|_| unreachable!());
+            inserted.push(edge);
+            if inserted.len() == 512 {
+                break 'fill;
+            }
+        }
+    }
+    relationships
+        .add_relationship(inserted[0])
+        .unwrap_or_else(|_| unreachable!());
+
+    let mut groups = full_builder();
+    for group in 1..=128 {
+        groups
+            .add_group_member(GroupId::new(group), TravelerId::new(1))
+            .unwrap_or_else(|_| unreachable!());
+    }
+    groups
+        .add_group_member(GroupId::new(1), TravelerId::new(2))
+        .unwrap_or_else(|_| unreachable!());
+
+    let mut edges = BookingParty::builder();
+    edges
+        .add_traveler(traveler(1))
+        .unwrap_or_else(|_| unreachable!());
+    assert_eq!(
+        edges
+            .add_relationship(Relationship {
+                from: TravelerId::new(1),
+                to: TravelerId::new(99),
+                kind: RelationshipKind::Companion,
+            })
+            .map(|_| ()),
+        Err(PartyError::UnknownTraveler(TravelerId::new(99)))
+    );
+}
+
+#[test]
 fn every_party_error_has_a_stable_display_surface() {
     for error in [
         PartyError::InvalidMonth(13),
