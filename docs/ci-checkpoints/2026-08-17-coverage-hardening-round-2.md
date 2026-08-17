@@ -9,5 +9,6 @@ This checkpoint records the second production-core coverage pass without changin
 - Journal encoding limits and transaction-stream propagation paths have dedicated regression matrices.
 - Validated rule execution is infallible after validation; public validation errors remain fail-closed.
 - Pricing removes redundant overflow branches only after the 90-night hard bound is proven.
+- The follow-up CDC Clippy corrections were verified with `cargo fmt --all`, workspace Clippy with `-D warnings`, and the complete workspace test suite before the helper committed them.
 
 The production CI gate remains >=99% independently for lines, functions, and LLVM regions. This checkpoint does not declare that gate passed; the exact-SHA CI run is authoritative.
