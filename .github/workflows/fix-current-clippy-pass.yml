@@ -1,0 +1,64 @@
+name: Verify current Clippy fixes
+
+on:
+  push:
+    branches:
+      - agent/m0-foundation-ci
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/m0-foundation-ci
+          fetch-depth: 0
+      - name: Apply exact Clippy fixes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          journal = Path('crates/veyra-cdc/src/journal_v2.rs')
+          text = journal.read_text()
+          old = 'use std::io::{self, Read, Seek, SeekFrom, Write};\n'
+          new = 'use std::io::{self, Read, Write};\n'
+          if text.count(old) != 1:
+              raise SystemExit(f'journal import match count={text.count(old)}')
+          text = text.replace(old, new)
+          old = 'mod tests {\n    use super::*;\n    use std::time::{SystemTime, UNIX_EPOCH};\n'
+          new = 'mod tests {\n    use super::*;\n    use std::io::{Seek, SeekFrom};\n    use std::time::{SystemTime, UNIX_EPOCH};\n'
+          if text.count(old) != 1:
+              raise SystemExit(f'journal test import match count={text.count(old)}')
+          journal.write_text(text.replace(old, new))
+
+          processor = Path('crates/veyra-cdc/src/processor.rs')
+          text = processor.read_text()
+          if text.count('self.apply_durable_batch(batch, apply)') != 2:
+              raise SystemExit('unexpected apply_durable_batch call count')
+          text = text.replace('self.apply_durable_batch(batch, apply)', 'self.apply_durable_batch(&batch, apply)')
+          old = '        batch: TransactionBatch,\n'
+          new = '        batch: &TransactionBatch,\n'
+          if text.count(old) != 1:
+              raise SystemExit(f'processor signature match count={text.count(old)}')
+          text = text.replace(old, new)
+          text = text.replace('self.journal.append(&batch)', 'self.journal.append(batch)')
+          text = text.replace('apply(&batch)', 'apply(batch)')
+          processor.write_text(text)
+          PY
+      - name: Verify full workspace
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+          cargo fmt --all
+          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+          cargo test --workspace --all-features --locked
+      - name: Commit verified fixes and remove helper
+        run: |
+          git rm .github/workflows/fix-current-clippy-pass.yml
+          git config user.name "eukalpia"
+          git config user.email "120781817+eukalpia@users.noreply.github.com"
+          git add .
+          git commit -m "fix: satisfy strict CDC clippy boundaries"
+          git push origin HEAD:agent/m0-foundation-ci
