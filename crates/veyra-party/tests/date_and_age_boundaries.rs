@@ -52,6 +52,14 @@ fn age_is_checked_before_birthday_on_birthday_and_after_birthday() {
 }
 
 #[test]
+fn extreme_year_distance_fails_closed_without_integer_overflow() {
+    assert_eq!(
+        date(i32::MIN, 1, 1).age_on(date(i32::MAX, 1, 1)),
+        Err(PartyError::AgeOutOfRange)
+    );
+}
+
+#[test]
 fn explicit_and_derived_ages_share_the_same_hard_upper_bound() {
     let check_in = date(2026, 9, 21);
     assert_eq!(AgeEvidence::AgeAtCheckIn(130).age_at(check_in), Ok(130));
