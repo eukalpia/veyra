@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/query-spatial-tdd.yml
       - tools/staged/apply_query_spatial.py
+      - tools/staged/fix_query_spatial_edges.py
   workflow_dispatch:
 
 permissions:
@@ -22,7 +23,9 @@ jobs:
       - name: Install pinned Rust
         run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
       - name: Install spatial query implementation
-        run: python3 tools/staged/apply_query_spatial.py
+        run: |
+          python3 tools/staged/apply_query_spatial.py
+          python3 tools/staged/fix_query_spatial_edges.py
       - name: Format workspace
         run: cargo fmt --all
       - name: Strict query clippy
@@ -32,7 +35,7 @@ jobs:
       - name: Commit verified spatial query implementation
         shell: bash
         run: |
-          git rm tools/staged/apply_query_spatial.py .github/workflows/query-spatial-tdd.yml
+          git rm tools/staged/apply_query_spatial.py tools/staged/fix_query_spatial_edges.py .github/workflows/query-spatial-tdd.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add crates/veyra-query/src/lib.rs
