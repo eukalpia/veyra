@@ -46,7 +46,7 @@ fn nested_begin_and_commit_without_begin_poison_the_processor() {
     let mut state = LiveReplicationState::default();
     let mut apply = |_batch: &TransactionBatch| -> Result<(), std::convert::Infallible> { Ok(()) };
 
-    assert_eq!(
+    assert!(matches!(
         process_replication_event(
             &mut processor,
             &mut checkpoint,
@@ -55,7 +55,7 @@ fn nested_begin_and_commit_without_begin_poison_the_processor() {
             &mut apply,
         ),
         Ok(LiveEventOutcome::Continue)
-    );
+    ));
     assert!(matches!(
         process_replication_event(
             &mut processor,
@@ -106,7 +106,7 @@ fn checkpoint_durability_failure_surfaces_through_live_apply_chain() {
     let mut state = LiveReplicationState::default();
     let mut apply = |_batch: &TransactionBatch| -> Result<(), std::convert::Infallible> { Ok(()) };
 
-    assert_eq!(
+    assert!(matches!(
         process_replication_event(
             &mut processor,
             &mut checkpoint,
@@ -115,7 +115,7 @@ fn checkpoint_durability_failure_surfaces_through_live_apply_chain() {
             &mut apply,
         ),
         Ok(LiveEventOutcome::Continue)
-    );
+    ));
     assert!(matches!(
         process_replication_event(
             &mut processor,
