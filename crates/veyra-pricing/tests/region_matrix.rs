@@ -1,6 +1,4 @@
-use veyra_pricing::{
-    MoneyMicros, OccupancyAdjustment, PriceVector, PricingError,
-};
+use veyra_pricing::{MoneyMicros, OccupancyAdjustment, PriceVector, PricingError};
 
 fn adjustment(adult: i64, child: i64) -> OccupancyAdjustment {
     OccupancyAdjustment {

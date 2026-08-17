@@ -4,14 +4,14 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use pgwire_replication::{Lsn, ReplicationEvent};
 use veyra_cdc::{
-    AppliedCheckpoint, CheckpointError, ChangeKind, DurableTransactionProcessor, Journal,
+    AppliedCheckpoint, ChangeKind, CheckpointError, DurableTransactionProcessor, Journal,
     JournalError, LiveEventOutcome, LiveReplicationState, PgOutputError, ProcessorError,
     ReplayDecision, RowChange, StreamError, TransactionBatch, TransactionBuildError,
     TransactionValidationError, process_replication_event, recover_checkpointed,
 };
 use veyra_types::LogSequenceNumber;
-use pgwire_replication::protocol::{Lsn, ReplicationEvent};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct ApplyFailure;
@@ -75,11 +75,17 @@ fn recovery_distinguishes_older_exact_future_and_missing_checkpoint_positions()
     };
     assert!(matches!(
         recover_checkpointed(&mut processor, &mut checkpoint, &mut apply),
-        Err(veyra_cdc::LiveReplicationError::Checkpoint(
-            CheckpointError::MissingFromJournal(lsn)
-        )) if lsn.get() == 15
+        Err(veyra_cdc::LiveReplicationError::Processor(ProcessorError::Apply(
+            veyra_cdc::CheckpointApplyError::Checkpoint(
+                CheckpointError::MissingFromJournal(lsn)
+            )
+        ))) if lsn.get() == 15
     ));
-    assert_eq!(applied.get(), 0, "nothing after an unproven checkpoint may apply");
+    assert_eq!(
+        applied.get(),
+        0,
+        "nothing after an unproven checkpoint may apply"
+    );
     remove(&journal_path);
     remove(&checkpoint_path);
 
@@ -106,8 +112,7 @@ fn recovery_distinguishes_older_exact_future_and_missing_checkpoint_positions()
 }
 
 #[test]
-fn checkpoint_fingerprint_mismatch_is_never_treated_as_duplicate()
--> Result<(), Box<dyn Error>> {
+fn checkpoint_fingerprint_mismatch_is_never_treated_as_duplicate() -> Result<(), Box<dyn Error>> {
     let journal_path = path("journal-mismatch");
     let checkpoint_path = path("checkpoint-mismatch");
     {
@@ -120,9 +125,11 @@ fn checkpoint_fingerprint_mismatch_is_never_treated_as_duplicate()
     let mut apply = |_batch: &TransactionBatch| -> Result<(), ApplyFailure> { Ok(()) };
     assert!(matches!(
         recover_checkpointed(&mut processor, &mut checkpoint, &mut apply),
-        Err(veyra_cdc::LiveReplicationError::Checkpoint(
-            CheckpointError::DurableMismatch(lsn)
-        )) if lsn.get() == 10
+        Err(veyra_cdc::LiveReplicationError::Processor(ProcessorError::Apply(
+            veyra_cdc::CheckpointApplyError::Checkpoint(
+                CheckpointError::DurableMismatch(lsn)
+            )
+        ))) if lsn.get() == 10
     ));
     remove(&journal_path);
     remove(&checkpoint_path);
@@ -164,8 +171,7 @@ fn an_exact_checkpoint_skips_old_records_then_applies_only_newer_transactions()
 }
 
 #[test]
-fn keepalive_regression_does_not_move_received_progress_backwards()
--> Result<(), Box<dyn Error>> {
+fn keepalive_regression_does_not_move_received_progress_backwards() -> Result<(), Box<dyn Error>> {
     let journal_path = path("journal-progress");
     let checkpoint_path = path("checkpoint-progress");
     let mut processor = DurableTransactionProcessor::open(&journal_path)?;
@@ -197,7 +203,8 @@ fn keepalive_regression_does_not_move_received_progress_backwards()
 
 #[test]
 fn public_error_wrappers_preserve_sources_and_all_non_io_surfaces() {
-    let journal_io: JournalError = io::Error::new(io::ErrorKind::PermissionDenied, "journal denied").into();
+    let journal_io: JournalError =
+        io::Error::new(io::ErrorKind::PermissionDenied, "journal denied").into();
     assert!(journal_io.source().is_some());
     assert!(journal_io.to_string().contains("journal I/O error"));
     let journal_tx = JournalError::InvalidTransaction(TransactionValidationError::EndBeforeCommit);
@@ -254,7 +261,9 @@ fn public_error_wrappers_preserve_sources_and_all_non_io_surfaces() {
     for error in processor_errors {
         assert!(!error.to_string().is_empty());
     }
-    assert!(!StreamError::Transaction(TransactionBuildError::CommitWithoutBegin)
-        .to_string()
-        .is_empty());
+    assert!(
+        !StreamError::Transaction(TransactionBuildError::CommitWithoutBegin)
+            .to_string()
+            .is_empty()
+    );
 }

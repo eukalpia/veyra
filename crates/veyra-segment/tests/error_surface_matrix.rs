@@ -31,7 +31,8 @@ fn io_conversion_display_and_source_preserve_the_original_error() {
 }
 
 #[test]
-fn missing_file_name_and_missing_file_fail_through_typed_boundaries() {
+fn missing_file_name_and_missing_file_fail_through_typed_boundaries() -> Result<(), Box<dyn Error>>
+{
     assert!(matches!(
         segment().write_atomic(Path::new("/")),
         Err(SegmentError::MissingFileName)
@@ -42,9 +43,12 @@ fn missing_file_name_and_missing_file_fail_through_typed_boundaries() {
         std::process::id(),
         u128::MAX
     ));
-    let error = Segment::read(&missing).expect_err("missing file must fail closed");
+    let Err(error) = Segment::read(&missing) else {
+        return Err("missing file unexpectedly decoded".into());
+    };
     assert!(matches!(error, SegmentError::Io(_)));
     assert!(error.source().is_some());
+    Ok(())
 }
 
 #[test]

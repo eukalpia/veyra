@@ -1,5 +1,5 @@
 use veyra_restrictions::{
-    CompiledRestrictions, RestrictionError, RestrictionRule, RESTRICTION_SCHEMA_V1, compile,
+    CompiledRestrictions, RESTRICTION_SCHEMA_V1, RestrictionError, RestrictionRule, compile,
 };
 
 fn compile_bounds(minimum: u16, maximum: u16) -> Result<CompiledRestrictions, RestrictionError> {
