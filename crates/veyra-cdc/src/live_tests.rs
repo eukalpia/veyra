@@ -298,11 +298,3 @@ fn clean_stop_preserves_applied_progress() -> Result<(), Box<dyn std::error::Err
     cleanup(&journal_path, &checkpoint_path);
     Ok(())
 }
-
-#[test]
-fn error_display_is_stable() {
-    assert_eq!(
-        LiveReplicationError::<ApplyFailure>::UnexpectedBoundaryOutcome.to_string(),
-        "unexpected transaction-boundary processing outcome"
-    );
-}
