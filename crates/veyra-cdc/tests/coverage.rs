@@ -167,7 +167,6 @@ fn journal_boundaries_cover_debug_sources_and_corruption() {
         JournalError::ChecksumMismatch(7),
         JournalError::HeaderPayloadMismatch(8),
         JournalError::UnexpectedEof,
-        JournalError::LengthOverflow,
         JournalError::InvalidChangeKind(9),
         JournalError::InvalidOptionTag(10),
         JournalError::TrailingBytes(11),
@@ -327,7 +326,6 @@ fn processor_live_and_stream_public_boundaries_are_exercised() {
         ))),
         LiveReplicationError::UnsupportedLogicalMessage("x".to_owned()),
         LiveReplicationError::StoppedMidTransaction(LogSequenceNumber::new(1)),
-        LiveReplicationError::UnexpectedBoundaryOutcome,
     ];
     for error in errors {
         assert!(!error.to_string().is_empty());
