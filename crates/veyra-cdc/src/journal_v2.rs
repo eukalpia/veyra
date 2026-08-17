@@ -185,6 +185,10 @@ fn scan(
         if payload_len > MAX_RECORD_BYTES as u64 {
             return Err(JournalError::RecordTooLarge(MAX_RECORD_BYTES + 1));
         }
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "payload_len is rejected above 64 MiB, which fits every supported usize target"
+        )]
         let payload_len_usize = payload_len as usize;
         let total = header_len + payload_len + CRC_LEN;
         if remaining < total {
@@ -229,6 +233,10 @@ fn encode_batch(batch: &TransactionBatch) -> Result<Vec<u8>, JournalError> {
     if count > MAX_CHANGES {
         return Err(JournalError::TooManyChanges(count));
     }
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "change count is rejected above 1,000,000, which is below u32::MAX"
+    )]
     let count = count as u32;
     let mut out = Vec::new();
     out.extend_from_slice(&batch.xid().to_le_bytes());
@@ -251,6 +259,10 @@ fn encode_optional(out: &mut Vec<u8>, tuple: Option<&[u8]>) -> Result<(), Journa
             if bytes.len() > MAX_RECORD_BYTES {
                 return Err(JournalError::TupleTooLarge(bytes.len()));
             }
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "tuple bytes are rejected above 64 MiB, which is below u32::MAX"
+            )]
             let len = bytes.len() as u32;
             out.push(1);
             out.extend_from_slice(&len.to_le_bytes());
