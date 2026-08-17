@@ -36,6 +36,15 @@ fn context_upper_bound_and_every_validation_error_are_explicit() {
         .validate(),
         Err(RuleError::InvalidAdultRule)
     );
+
+    assert_eq!(
+        Rule::And(vec![
+            Rule::Capacity { min: 1, max: 2 },
+            Rule::RequireGuardianForMinors { minor_below_age: 0 },
+        ])
+        .validate(),
+        Err(RuleError::InvalidGuardianRule)
+    );
     for error in [
         RuleError::InvalidOccupantCount(0),
         RuleError::DuplicateTraveler(TravelerId::new(1)),
