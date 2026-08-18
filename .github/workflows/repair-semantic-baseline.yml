@@ -1,0 +1,77 @@
+name: Repair semantic baseline
+
+on:
+  push:
+    branches:
+      - agent/v1-production-completion
+    paths:
+      - docs/ci/current-baseline/status.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-semantic-baseline
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/v1-production-completion
+          fetch-depth: 0
+      - name: Inspect captured baseline
+        id: status
+        shell: bash
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+          payload = json.loads(Path("docs/ci/current-baseline/status.json").read_text())
+          print(f"passed={str(payload['passed']).lower()}")
+          print(f"clippy={payload['gates']['clippy']}")
+          print(f"tests={payload['gates']['tests']}")
+          PY
+      - name: Install pinned Rust
+        if: steps.status.outputs.passed != 'true'
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Apply compiler-guided lint fixes
+        if: steps.status.outputs.passed != 'true' && steps.status.outputs.clippy != '0'
+        run: >
+          cargo clippy
+          --fix
+          --workspace
+          --all-targets
+          --all-features
+          --locked
+          --allow-dirty
+          --allow-staged
+          --
+          -D warnings
+      - name: Verify repaired semantic baseline
+        if: steps.status.outputs.passed != 'true'
+        shell: bash
+        run: |
+          cargo fmt --all
+          cargo fmt --all -- --check
+          cargo metadata --locked --format-version 1 > /dev/null
+          (cd fuzz && cargo metadata --locked --format-version 1 > /dev/null)
+          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+          cargo test --workspace --all-features --locked
+      - name: Publish only a verified semantic repair
+        if: steps.status.outputs.passed != 'true'
+        shell: bash
+        run: |
+          rm -rf docs/ci/current-baseline
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No semantic code changes were required"
+            exit 0
+          fi
+          git commit -m "fix: repair semantic Rust baseline"
+          git push origin HEAD:agent/v1-production-completion
