@@ -14,11 +14,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Normalize runner copy with pinned rustfmt
+        run: cargo fmt --all
       - name: Format
         run: cargo fmt --all -- --check
       - name: Strict CDC Clippy
         run: cargo clippy -p veyra-cdc --all-targets --all-features --locked -- -D warnings
       - name: Bootstrap contract
         run: cargo test -p veyra-cdc --test bootstrap_contract --locked
+      - name: Snapshot baseline contract
+        run: cargo test -p veyra-cdc --test bootstrap_live_baseline --locked
       - name: Full CDC tests
         run: cargo test -p veyra-cdc --all-features --locked
