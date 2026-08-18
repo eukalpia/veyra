@@ -1,4 +1,4 @@
-name: V3 candidate verification
+name: V4 candidate verification
 
 on:
   pull_request:
@@ -9,12 +9,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: v3-candidate-${{ github.event.pull_request.number }}
+  group: v4-candidate-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   candidate:
-    name: V3 candidate / stable + 99-99-99
+    name: V4 candidate / stable + 99-99-99
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -23,7 +23,7 @@ jobs:
           rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
           rustup toolchain install nightly --profile minimal --component llvm-tools-preview
           cargo install cargo-llvm-cov --locked
-      - name: Materialize V3 candidate in runner only
+      - name: Materialize V4 candidate in runner only
         shell: bash
         run: |
           python3 tools/final-hardening/apply.py transform
@@ -36,6 +36,7 @@ jobs:
             | base64 -d | gzip -d > /tmp/regions_v3.py
           python3 -m py_compile /tmp/regions_v3.py
           python3 /tmp/regions_v3.py
+          python3 tools/final-hardening/regions_v4.py
           python3 - <<'PY'
           from pathlib import Path
 
