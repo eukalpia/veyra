@@ -21,6 +21,21 @@ jobs:
         shell: bash
         run: |
           python3 tools/final-hardening/apply.py lifetime
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('crates/veyra-query/tests/multi_room_matrix.rs')
+          text = path.read_text()
+          compact = "fn query<'a>(party: &'a BookingParty, profile: SolutionProfile) -> MultiRoomStayQuery<'a> {\n"
+          expanded = """fn query<'a>(
+              party: &'a BookingParty,
+              profile: SolutionProfile,
+          ) -> MultiRoomStayQuery<'a> {
+          """
+          if compact in text:
+              path.write_text(text.replace(compact, expanded, 1))
+          elif expanded not in text:
+              raise SystemExit('explicit lifetime helper contract not found')
+          PY
 
       - name: Add topology, solver, runtime, segment, and server coverage regressions
         shell: bash
