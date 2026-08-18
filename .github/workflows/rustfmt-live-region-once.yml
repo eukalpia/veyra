@@ -1,0 +1,33 @@
+name: Rustfmt live region once
+
+on:
+  push:
+    branches:
+      - agent/v1-production-completion
+    paths:
+      - .github/workflows/rustfmt-live-region-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/v1-production-completion
+          fetch-depth: 0
+      - run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt
+      - run: |
+          cargo fmt --all
+          cargo fmt --all -- --check
+      - shell: bash
+        run: |
+          git rm .github/workflows/rustfmt-live-region-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "style: format CDC live region regression"
+          git push origin HEAD:agent/v1-production-completion
