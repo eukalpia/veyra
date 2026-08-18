@@ -7,9 +7,7 @@ use veyra_query::{
     MultiRoomStayQuery, RoomDocument, SearchEngine, SolutionProfile, SolverConfig, StayQuery,
 };
 use veyra_ranking::{RankingKind, RankingProfile};
-use veyra_restrictions::{
-    RESTRICTION_SCHEMA_V1, RestrictionRule, compile as compile_restrictions,
-};
+use veyra_restrictions::{RESTRICTION_SCHEMA_V1, RestrictionRule, compile as compile_restrictions};
 use veyra_rule_compiler::{RULE_SCHEMA_V1, compile as compile_rule};
 use veyra_rules::Rule;
 
@@ -89,11 +87,8 @@ fn engine() -> SearchEngine {
                 .unwrap_or_else(|_| unreachable!());
         }
     }
-    SearchEngine::try_new(
-        availability,
-        vec![room(0, 100, 500), room(1, 120, 0)],
-    )
-    .unwrap_or_else(|_| unreachable!())
+    SearchEngine::try_new(availability, vec![room(0, 100, 500), room(1, 120, 0)])
+        .unwrap_or_else(|_| unreachable!())
 }
 
 #[test]

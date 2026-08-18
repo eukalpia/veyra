@@ -61,8 +61,7 @@ fn policy(capacity: u16) -> veyra_rule_compiler::CompiledRule {
 fn room(id: u32, floor: u16, building: u16, capacity: u16) -> PricedRoomOffer {
     PricedRoomOffer {
         room_id: id,
-        prices: PriceVector::try_new(10, vec![money(100)], 1)
-            .unwrap_or_else(|_| unreachable!()),
+        prices: PriceVector::try_new(10, vec![money(100)], 1).unwrap_or_else(|_| unreachable!()),
         occupancy_adjustment: OccupancyAdjustment {
             per_adult_per_night: money(0),
             per_child_per_night: money(0),
@@ -104,8 +103,7 @@ fn explicit_connected_edge_makes_connected_rooms_constraint_provable() {
 
 #[test]
 fn complete_topology_with_no_edge_proves_relation_false() {
-    let topology =
-        RoomRelationIndex::try_new(&[10, 11], &[]).unwrap_or_else(|_| unreachable!());
+    let topology = RoomRelationIndex::try_new(&[10, 11], &[]).unwrap_or_else(|_| unreachable!());
     let result = solve_priced_with_topology(
         &party(&[
             RoomingRelation::SeparateRoom,

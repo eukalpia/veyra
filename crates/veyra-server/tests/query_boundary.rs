@@ -1,8 +1,6 @@
 use veyra_party::{AgeEvidence, BookingParty, CivilDate, Traveler, TravelerId};
 use veyra_query::{MultiRoomStayQuery, SearchEngine, SolutionProfile, SolverConfig};
-use veyra_runtime::{
-    CannotProveReason, GenerationState, PublishedGeneration, RuntimeSnapshot,
-};
+use veyra_runtime::{CannotProveReason, GenerationState, PublishedGeneration, RuntimeSnapshot};
 use veyra_server::{QueryService, ServiceQueryError};
 use veyra_types::{GenerationId, LogSequenceNumber, ProjectionProgress};
 

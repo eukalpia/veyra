@@ -16,10 +16,7 @@ fn publication_rejects_ready_metadata_without_payload() {
         progress(10),
     ));
 
-    assert!(matches!(
-        result,
-        Err(PublicationError::ReadyWithoutPayload)
-    ));
+    assert!(matches!(result, Err(PublicationError::ReadyWithoutPayload)));
 }
 
 #[test]

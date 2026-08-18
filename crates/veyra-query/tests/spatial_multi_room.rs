@@ -8,9 +8,7 @@ use veyra_query::{
     MultiRoomStayQuery, QueryError, RoomDocument, RoomPlacement, RoomSpatialProjection,
     RoomTopologyEdge, RoomTopologyRelation, SearchEngine, SolutionProfile, SolverConfig,
 };
-use veyra_restrictions::{
-    RESTRICTION_SCHEMA_V1, RestrictionRule, compile as compile_restrictions,
-};
+use veyra_restrictions::{RESTRICTION_SCHEMA_V1, RestrictionRule, compile as compile_restrictions};
 use veyra_rule_compiler::{RULE_SCHEMA_V1, compile as compile_rule};
 use veyra_rules::Rule;
 
@@ -51,18 +49,14 @@ fn room(room_id: u32) -> RoomDocument {
         property_id: 7,
         destination_id: 55,
         adult_age: 18,
-        occupancy_rule: compile_rule(
-            RULE_SCHEMA_V1,
-            &Rule::Capacity { min: 1, max: 1 },
-        )
-        .unwrap_or_else(|_| unreachable!()),
+        occupancy_rule: compile_rule(RULE_SCHEMA_V1, &Rule::Capacity { min: 1, max: 1 })
+            .unwrap_or_else(|_| unreachable!()),
         restrictions: compile_restrictions(
             RESTRICTION_SCHEMA_V1,
             &[RestrictionRule::MinStay(1), RestrictionRule::MaxStay(5)],
         )
         .unwrap_or_else(|_| unreachable!()),
-        prices: PriceVector::try_new(10, vec![money(100)], 1)
-            .unwrap_or_else(|_| unreachable!()),
+        prices: PriceVector::try_new(10, vec![money(100)], 1).unwrap_or_else(|_| unreachable!()),
         occupancy_adjustment: OccupancyAdjustment {
             per_adult_per_night: money(0),
             per_child_per_night: money(0),
@@ -146,12 +140,9 @@ fn connected_and_same_floor_constraints_use_explicit_spatial_projection() {
         RoomingRelation::SameFloor,
         RoomingRelation::SameBuilding,
     ]);
-    let engine = SearchEngine::try_new_with_spatial(
-        availability(),
-        vec![room(0), room(1)],
-        spatial(),
-    )
-    .unwrap_or_else(|_| unreachable!());
+    let engine =
+        SearchEngine::try_new_with_spatial(availability(), vec![room(0), room(1)], spatial())
+            .unwrap_or_else(|_| unreachable!());
 
     let result = engine
         .search_multi_room(&query(&party))

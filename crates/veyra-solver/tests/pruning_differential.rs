@@ -17,8 +17,14 @@ fn money(value: i64) -> MoneyMicros {
 }
 
 fn policy(capacity: u16) -> veyra_rule_compiler::CompiledRule {
-    compile(RULE_SCHEMA_V1, &Rule::Capacity { min: 1, max: capacity })
-        .unwrap_or_else(|_| unreachable!())
+    compile(
+        RULE_SCHEMA_V1,
+        &Rule::Capacity {
+            min: 1,
+            max: capacity,
+        },
+    )
+    .unwrap_or_else(|_| unreachable!())
 }
 
 fn party(traveler_count: usize, relation_kind: u8) -> BookingParty {
@@ -67,14 +73,9 @@ fn offers(room_count: usize, traveler_count: usize) -> Vec<RoomOffer> {
         .collect()
 }
 
-fn reference(
-    traveler_count: usize,
-    room_count: usize,
-    relation_kind: u8,
-) -> (usize, i64) {
-    let assignment_count = room_count.pow(
-        u32::try_from(traveler_count).unwrap_or_else(|_| unreachable!()),
-    );
+fn reference(traveler_count: usize, room_count: usize, relation_kind: u8) -> (usize, i64) {
+    let assignment_count =
+        room_count.pow(u32::try_from(traveler_count).unwrap_or_else(|_| unreachable!()));
     let mut valid_count = 0_usize;
     let mut cheapest = i64::MAX;
 

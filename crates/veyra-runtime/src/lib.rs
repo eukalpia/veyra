@@ -50,11 +50,58 @@ pub enum CannotProveReason {
 
 /// Immutable runtime metadata published atomically to all readers.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(try_from = "RuntimeSnapshotWire")]
 pub struct RuntimeSnapshot {
     phase: ServicePhase,
     generation: GenerationId,
     progress: ProjectionProgress,
     cannot_prove: Option<CannotProveReason>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+struct RuntimeSnapshotWire {
+    phase: ServicePhase,
+    generation: GenerationId,
+    progress: ProjectionProgress,
+    cannot_prove: Option<CannotProveReason>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RuntimeSnapshotInvariantError {
+    ReadyWithReason,
+    NonReadyWithoutReason,
+}
+
+impl fmt::Display for RuntimeSnapshotInvariantError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::ReadyWithReason => "ready runtime snapshot cannot include a cannot_prove reason",
+            Self::NonReadyWithoutReason => {
+                "non-ready runtime snapshot requires a cannot_prove reason"
+            }
+        })
+    }
+}
+
+impl TryFrom<RuntimeSnapshotWire> for RuntimeSnapshot {
+    type Error = RuntimeSnapshotInvariantError;
+
+    fn try_from(raw: RuntimeSnapshotWire) -> Result<Self, Self::Error> {
+        if raw.phase == ServicePhase::Ready {
+            if raw.cannot_prove.is_some() {
+                return Err(RuntimeSnapshotInvariantError::ReadyWithReason);
+            }
+        } else if raw.cannot_prove.is_none() {
+            return Err(RuntimeSnapshotInvariantError::NonReadyWithoutReason);
+        }
+
+        Ok(Self {
+            phase: raw.phase,
+            generation: raw.generation,
+            progress: raw.progress,
+            cannot_prove: raw.cannot_prove,
+        })
+    }
 }
 
 impl RuntimeSnapshot {

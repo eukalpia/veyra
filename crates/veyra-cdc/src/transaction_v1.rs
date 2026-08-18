@@ -41,12 +41,36 @@ impl RowChange {
 
 /// A complete `PostgreSQL` transaction. It is the smallest CDC durability/apply unit.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(try_from = "TransactionBatchWire")]
 pub struct TransactionBatch {
     xid: u32,
     final_lsn: LogSequenceNumber,
     commit_lsn: LogSequenceNumber,
     end_lsn: LogSequenceNumber,
     changes: Vec<RowChange>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct TransactionBatchWire {
+    xid: u32,
+    final_lsn: LogSequenceNumber,
+    commit_lsn: LogSequenceNumber,
+    end_lsn: LogSequenceNumber,
+    changes: Vec<RowChange>,
+}
+
+impl TryFrom<TransactionBatchWire> for TransactionBatch {
+    type Error = TransactionValidationError;
+
+    fn try_from(raw: TransactionBatchWire) -> Result<Self, Self::Error> {
+        Self::try_new(
+            raw.xid,
+            raw.final_lsn,
+            raw.commit_lsn,
+            raw.end_lsn,
+            raw.changes,
+        )
+    }
 }
 
 impl TransactionBatch {
@@ -57,6 +81,9 @@ impl TransactionBatch {
         end_lsn: LogSequenceNumber,
         changes: Vec<RowChange>,
     ) -> Result<Self, TransactionValidationError> {
+        if commit_lsn < final_lsn {
+            return Err(TransactionValidationError::CommitBeforeFinal);
+        }
         if end_lsn < commit_lsn {
             return Err(TransactionValidationError::EndBeforeCommit);
         }
@@ -129,12 +156,16 @@ fn usize_to_u64(value: usize) -> u64 {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TransactionValidationError {
+    CommitBeforeFinal,
     EndBeforeCommit,
 }
 
 impl fmt::Display for TransactionValidationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("end_lsn is before commit_lsn")
+        formatter.write_str(match self {
+            Self::CommitBeforeFinal => "commit_lsn is before final_lsn",
+            Self::EndBeforeCommit => "end_lsn is before commit_lsn",
+        })
     }
 }
 impl std::error::Error for TransactionValidationError {}
@@ -271,7 +302,11 @@ mod tests {
     }
 
     #[test]
-    fn batch_rejects_end_before_commit() {
+    fn batch_rejects_invalid_lsn_order() {
+        assert_eq!(
+            TransactionBatch::try_new(1, lsn(3), lsn(2), lsn(4), Vec::new()),
+            Err(TransactionValidationError::CommitBeforeFinal)
+        );
         assert_eq!(
             TransactionBatch::try_new(1, lsn(3), lsn(3), lsn(2), Vec::new()),
             Err(TransactionValidationError::EndBeforeCommit)
@@ -334,6 +369,10 @@ mod tests {
 
     #[test]
     fn errors_have_stable_messages() {
+        assert_eq!(
+            TransactionValidationError::CommitBeforeFinal.to_string(),
+            "commit_lsn is before final_lsn"
+        );
         assert_eq!(
             TransactionValidationError::EndBeforeCommit.to_string(),
             "end_lsn is before commit_lsn"
