@@ -1,0 +1,534 @@
+V5 ZERO-COUNT CODEREGION COORDINATES (deduplicated source ranges)
+
+veyra-cdc/src/checkpoint.rs: unique_zero_ranges=77
+  52:5-52:69 | fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+  53:9-53:18 | formatter
+  53:9-54:47 | formatter
+  53:9-55:39 | formatter
+  53:9-56:41 | formatter
+  55:14-55:19 | .field("path", &self.path)
+  56:14-56:19 | .field("state", &self.state)
+  57:14-57:35 | .finish_non_exhaustive()
+  58:5-58:6 | }
+  62:5-62:73 | pub fn open(path: impl AsRef<Path>) -> Result<Self, CheckpointError> {
+  63:13-63:17 | let path = path.as_ref().to_path_buf();
+  63:20-63:33 | let path = path.as_ref().to_path_buf();
+  63:34-63:45 | let path = path.as_ref().to_path_buf();
+  64:13-64:17 | let file = OpenOptions::new()
+  64:20-67:26 | let file = OpenOptions::new()
+  68:14-68:18 | .open(&path)?;
+  68:19-68:24 | .open(&path)?;
+  68:25-68:26 | .open(&path)?;
+  69:13-69:27 | let mut checkpoint = Self {
+  69:30-73:10 | let mut checkpoint = Self {
+  70:13-70:17 | path,
+  74:9-74:19 | checkpoint.recover()?;
+  74:20-74:27 | checkpoint.recover()?;
+  74:29-74:30 | checkpoint.recover()?;
+  75:9-75:23 | Ok(checkpoint)
+  76:5-76:6 | }
+  92:46-92:47 | validate_transition(self.state, next)?;
+  97:37-97:38 | self.file.write_all(&record)?;
+  98:30-98:31 | self.file.sync_data()?;
+  106:84-106:85 | let mut reader = OpenOptions::new().read(true).write(true).open(&self.path)?;
+  107:41-107:42 | let file_len = reader.metadata()?.len();
+  111:41-111:42 | reader.set_len(complete_len)?;
+  112:31-112:32 | reader.sync_data()?;
+  119:43-119:44 | reader.read_exact(&mut record)?;
+  121:45-121:46 | validate_transition(state, next)?;
+  157:16-157:58 | return Err(CheckpointError::InvalidMagic(offset));
+  161:16-161:65 | return Err(CheckpointError::UnsupportedVersion(version));
+  170:16-170:62 | return Err(CheckpointError::ChecksumMismatch(offset));
+  215:22-215:27 | Self::Io(error) => write!(formatter, "checkpoint I/O: {error}"),
+  215:32-215:38 | Self::Io(error) => write!(formatter, "checkpoint I/O: {error}"),
+  215:39-215:48 | Self::Io(error) => write!(formatter, "checkpoint I/O: {error}"),
+  216:32-216:38 | Self::InvalidMagic(offset) => write!(formatter, "invalid checkpoint magic at {offset}"),
+  216:43-216:49 | Self::InvalidMagic(offset) => write!(formatter, "invalid checkpoint magic at {offset}"),
+  216:50-216:59 | Self::InvalidMagic(offset) => write!(formatter, "invalid checkpoint magic at {offset}"),
+  217:38-217:45 | Self::UnsupportedVersion(version) => {
+  218:17-218:23 | write!(formatter, "unsupported checkpoint version {version}")
+  218:24-218:33 | write!(formatter, "unsupported checkpoint version {version}")
+  220:36-220:42 | Self::ChecksumMismatch(offset) => {
+  221:17-221:23 | write!(formatter, "checkpoint checksum mismatch at {offset}")
+  221:24-221:33 | write!(formatter, "checkpoint checksum mismatch at {offset}")
+  223:36-223:45 | Self::CorruptRecord => formatter.write_str("corrupt checkpoint record"),
+  223:46-223:55 | Self::CorruptRecord => formatter.write_str("corrupt checkpoint record"),
+  223:56-223:83 | Self::CorruptRecord => formatter.write_str("corrupt checkpoint record"),
+  224:38-224:47 | Self::EndBeforeCommit => formatter.write_str("checkpoint end LSN is before commit LSN"),
+  224:48-224:57 | Self::EndBeforeCommit => formatter.write_str("checkpoint end LSN is before commit LSN"),
+  224:58-224:99 | Self::EndBeforeCommit => formatter.write_str("checkpoint end LSN is before commit LSN"),
+  226:37-226:40 | Self::ConflictingCommit(lsn) => write!(formatter, "conflicting checkpoint at {lsn:?}"),
+  226:45-226:51 | Self::ConflictingCommit(lsn) => write!(formatter, "conflicting checkpoint at {lsn:?}"),
+  226:52-226:61 | Self::ConflictingCommit(lsn) => write!(formatter, "conflicting checkpoint at {lsn:?}"),
+  227:35-227:38 | Self::DurableMismatch(lsn) => {
+  228:17-228:23 | write!(
+  229:21-229:30 | formatter,
+  233:38-233:41 | Self::MissingFromJournal(lsn) => {
+  234:17-234:23 | write!(
+  235:21-235:30 | formatter,
+  239:37-239:46 | Self::LengthOverflow => formatter.write_str("checkpoint length overflow"),
+  239:47-239:56 | Self::LengthOverflow => formatter.write_str("checkpoint length overflow"),
+  239:57-239:85 | Self::LengthOverflow => formatter.write_str("checkpoint length overflow"),
+  245:5-245:67 | fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+  246:15-246:19 | match self {
+  247:22-247:27 | Self::Io(error) => Some(error),
+  247:32-247:43 | Self::Io(error) => Some(error),
+  248:18-248:22 | _ => None,
+  250:5-250:6 | }
+  254:5-254:38 | fn from(value: io::Error) -> Self {
+  255:9-255:24 | Self::Io(value)
+  256:5-256:6 | }
+
+veyra-cdc/src/journal_v2.rs: unique_zero_ranges=80
+  36:44-36:45 | let decision = self.classify(batch)?;
+  74:5-74:69 | fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+  75:9-75:18 | formatter
+  75:9-76:37 | formatter
+  75:9-77:39 | formatter
+  75:9-78:75 | formatter
+  77:14-77:19 | .field("path", &self.path)
+  78:14-78:19 | .field("highest_commit_lsn", &self.guard.highest_commit_lsn())
+  78:20-78:40 | .field("highest_commit_lsn", &self.guard.highest_commit_lsn())
+  79:14-79:35 | .finish_non_exhaustive()
+  80:5-80:6 | }
+  90:25-90:26 | .open(&path)?;
+  96:26-96:27 | journal.recover()?;
+  102:50-102:51 | let decision = self.guard.classify(batch)?;
+  106:42-106:43 | let payload = encode_batch(batch)?;
+  108:20-108:68 | return Err(JournalError::RecordTooLarge(payload.len()));
+  118:38-118:39 | self.file.write_all(&payload)?;
+  119:61-119:62 | self.file.write_all(&crc32c(&payload).to_le_bytes())?;
+  120:30-120:31 | self.file.sync_data()?;
+  133:52-133:53 | let (records, _) = scan(&mut reader, false)?;
+  138:84-138:85 | let mut reader = OpenOptions::new().read(true).write(true).open(&self.path)?;
+  141:32-141:33 | reader.set_len(len)?;
+  142:31-142:32 | reader.sync_data()?;
+  146:37-146:38 | if guard.observe(record)? != ReplayDecision::Apply {
+  147:24-147:86 | return Err(JournalError::DuplicateDurableRecord(record.commit_lsn()));
+  160:35-160:36 | let file_len = file.metadata()?.len();
+  173:37-173:38 | file.read_exact(&mut header)?;
+  179:20-179:66 | return Err(JournalError::UnsupportedVersion(version));
+  185:20-185:75 | return Err(JournalError::RecordTooLarge(MAX_RECORD_BYTES + 1));
+  194:20-194:24 | return tail(records, offset, allow_incomplete_tail);
+  194:25-194:32 | return tail(records, offset, allow_incomplete_tail);
+  194:34-194:40 | return tail(records, offset, allow_incomplete_tail);
+  194:42-194:63 | return tail(records, offset, allow_incomplete_tail);
+  197:38-197:39 | file.read_exact(&mut payload)?;
+  199:34-199:35 | file.read_exact(&mut crc)?;
+  203:43-203:44 | let batch = decode_batch(&payload)?;
+  233:16-233:56 | return Err(JournalError::TooManyChanges(count));
+  249:63-249:64 | encode_optional(&mut out, change.old_tuple.as_deref())?;
+  250:63-250:64 | encode_optional(&mut out, change.new_tuple.as_deref())?;
+  259:24-259:69 | return Err(JournalError::TupleTooLarge(bytes.len()));
+  277:27-277:28 | let xid = cursor.u32()?;
+  278:56-278:57 | let final_lsn = LogSequenceNumber::new(cursor.u64()?);
+  279:57-279:58 | let commit_lsn = LogSequenceNumber::new(cursor.u64()?);
+  280:54-280:55 | let end_lsn = LogSequenceNumber::new(cursor.u64()?);
+  281:29-281:30 | let count = cursor.u32()? as usize;
+  283:16-283:56 | return Err(JournalError::TooManyChanges(count));
+  287:39-287:40 | let relation_id = cursor.u32()?;
+  288:37-288:38 | let kind = match cursor.u8()? {
+  290:18-290:36 | 1 => ChangeKind::Update,
+  291:18-291:36 | 2 => ChangeKind::Delete,
+  292:18-292:38 | 3 => ChangeKind::Truncate,
+  298:36-298:37 | cursor.optional_bytes()?,
+  299:36-299:37 | cursor.optional_bytes()?,
+  322:48-322:49 | .ok_or(JournalError::UnexpectedEof)?;
+  327:24-327:25 | Ok(self.take(1)?[0])
+  330:33-330:34 | let bytes = self.take(4)?;
+  334:33-334:34 | let bytes = self.take(8)?;
+  340:24-340:25 | match self.u8()? {
+  343:37-343:38 | let len = self.u32()? as usize;
+  345:28-345:65 | return Err(JournalError::TupleTooLarge(len));
+  347:39-347:40 | Ok(Some(self.take(len)?.to_vec()))
+  349:13-349:16 | tag => Err(JournalError::InvalidOptionTag(tag)),
+  349:20-349:60 | tag => Err(JournalError::InvalidOptionTag(tag)),
+  395:5-395:69 | fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+  396:15-396:19 | match self {
+  397:22-397:27 | Self::Io(error) => write!(formatter, "journal I/O error: {error}"),
+  397:32-397:38 | Self::Io(error) => write!(formatter, "journal I/O error: {error}"),
+  397:39-397:48 | Self::Io(error) => write!(formatter, "journal I/O error: {error}"),
+  398:13-398:18 | other => write!(formatter, "{other:?}"),
+  398:22-398:28 | other => write!(formatter, "{other:?}"),
+  398:29-398:38 | other => write!(formatter, "{other:?}"),
+  400:5-400:6 | }
+  403:5-403:67 | fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+  404:15-404:19 | match self {
+  405:22-405:27 | Self::Io(error) => Some(error),
+  405:32-405:43 | Self::Io(error) => Some(error),
+  406:38-406:43 | Self::InvalidTransaction(error) => Some(error),
+  406:48-406:59 | Self::InvalidTransaction(error) => Some(error),
+  407:18-407:22 | _ => None,
+  409:5-409:6 | }
+
+veyra-cdc/src/live.rs: unique_zero_ranges=221
+  54:5-54:48 | pub const fn transaction_open(self) -> bool {
+  55:9-55:30 | self.transaction_open
+  56:5-56:6 | }
+  66:45-68:10 | if lsn > self.progress.received_lsn {
+  102:5-102:69 | fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+  103:15-103:19 | match self {
+  104:13-104:31 | Self::Apply(error) => write!(formatter, "projection apply: {error}"),
+  104:35-104:41 | Self::Apply(error) => write!(formatter, "projection apply: {error}"),
+  104:42-104:51 | Self::Apply(error) => write!(formatter, "projection apply: {error}"),
+  105:13-105:36 | Self::Checkpoint(error) => write!(formatter, "applied checkpoint: {error}"),
+  105:40-105:46 | Self::Checkpoint(error) => write!(formatter, "applied checkpoint: {error}"),
+  105:47-105:56 | Self::Checkpoint(error) => write!(formatter, "applied checkpoint: {error}"),
+  107:5-107:6 | }
+  112:1-116:56 | pub fn recover_checkpointed<E>(
+  117:9-117:15 | let target = checkpoint.state();
+  117:18-117:28 | let target = checkpoint.state();
+  117:29-117:34 | let target = checkpoint.state();
+  118:9-118:21 | let found_target = Cell::new(target.commit_lsn() == LogSequenceNumber::ZERO);
+  118:24-118:33 | let found_target = Cell::new(target.commit_lsn() == LogSequenceNumber::ZERO);
+  118:34-118:80 | let found_target = Cell::new(target.commit_lsn() == LogSequenceNumber::ZERO);
+  119:9-119:32 | let mut checkpointing_apply = |batch: &TransactionBatch| {
+  119:62-119:63 | let mut checkpointing_apply = |batch: &TransactionBatch| {
+  120:12-120:30 | if batch.commit_lsn() == target.commit_lsn() {
+  120:12-120:53 | if batch.commit_lsn() == target.commit_lsn() {
+  120:54-122:10 | if batch.commit_lsn() == target.commit_lsn() {
+  122:19-122:37 | } else if batch.commit_lsn() > target.commit_lsn() && !found_target.get() {
+  122:19-122:59 | } else if batch.commit_lsn() > target.commit_lsn() && !found_target.get() {
+  122:63-122:82 | } else if batch.commit_lsn() > target.commit_lsn() && !found_target.get() {
+  123:20-125:15 | return Err(CheckpointApplyError::Checkpoint(
+  126:9-126:10 | }
+  127:9-127:27 | apply_checkpointed(checkpoint, batch, apply)
+  127:28-127:38 | apply_checkpointed(checkpoint, batch, apply)
+  127:40-127:45 | apply_checkpointed(checkpoint, batch, apply)
+  127:47-127:52 | apply_checkpointed(checkpoint, batch, apply)
+  128:5-128:6 | };
+  130:5-130:14 | processor
+  131:10-131:17 | .recover(&mut checkpointing_apply)
+  131:18-131:42 | .recover(&mut checkpointing_apply)
+  132:10-132:17 | .map_err(LiveReplicationError::Processor)?;
+  132:50-132:51 | .map_err(LiveReplicationError::Processor)?;
+  133:8-133:27 | if !found_target.get() {
+  134:16-136:11 | return Err(LiveReplicationError::Checkpoint(
+  137:5-137:6 | }
+  138:5-138:37 | Ok(checkpoint.state().end_lsn())
+  138:8-138:18 | Ok(checkpoint.state().end_lsn())
+  139:1-139:2 | }
+  141:1-147:55 | pub fn process_replication_event<E>(
+  148:11-148:16 | match event {
+  149:39-149:46 | ReplicationEvent::KeepAlive { wal_end, .. } => {
+  150:13-150:18 | state.observe_received(wal_end);
+  150:19-150:35 | state.observe_received(wal_end);
+  150:36-150:43 | state.observe_received(wal_end);
+  151:13-151:43 | Ok(LiveEventOutcome::Continue)
+  153:35-153:44 | ReplicationEvent::Begin { final_lsn, xid, .. } => {
+  153:46-153:49 | ReplicationEvent::Begin { final_lsn, xid, .. } => {
+  154:13-154:18 | state.observe_received(final_lsn);
+  154:19-154:35 | state.observe_received(final_lsn);
+  154:36-154:45 | state.observe_received(final_lsn);
+  155:13-155:22 | processor
+  156:18-156:35 | .begin_transaction::<CheckpointApplyError<E>>(xid, local_lsn(final_lsn))
+  156:63-156:66 | .begin_transaction::<CheckpointApplyError<E>>(xid, local_lsn(final_lsn))
+  156:68-156:77 | .begin_transaction::<CheckpointApplyError<E>>(xid, local_lsn(final_lsn))
+  156:78-156:87 | .begin_transaction::<CheckpointApplyError<E>>(xid, local_lsn(final_lsn))
+  157:18-157:25 | .map_err(LiveReplicationError::Processor)?;
+  157:58-157:59 | .map_err(LiveReplicationError::Processor)?;
+  158:13-158:42 | state.transaction_open = true;
+  159:13-159:43 | Ok(LiveEventOutcome::Continue)
+  162:13-162:22 | wal_start,
+  163:13-163:20 | wal_end,
+  164:13-164:17 | data,
+  167:13-167:18 | state.observe_received(wal_start);
+  167:19-167:35 | state.observe_received(wal_start);
+  167:36-167:45 | state.observe_received(wal_start);
+  168:13-168:18 | state.observe_received(wal_end);
+  168:19-168:35 | state.observe_received(wal_end);
+  168:36-168:43 | state.observe_received(wal_end);
+  169:17-169:40 | let mut checkpointing_apply =
+  170:44-170:62 | |batch: &TransactionBatch| apply_checkpointed(checkpoint, batch, apply);
+  170:63-170:73 | |batch: &TransactionBatch| apply_checkpointed(checkpoint, batch, apply);
+  170:75-170:80 | |batch: &TransactionBatch| apply_checkpointed(checkpoint, batch, apply);
+
+veyra-cdc/src/processor.rs: unique_zero_ranges=145
+  43:5-43:69 | fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+  44:9-44:18 | formatter
+  44:9-45:57 | formatter
+  44:9-46:43 | formatter
+  44:9-47:45 | formatter
+  44:9-48:47 | formatter
+  46:14-46:19 | .field("stream", &self.stream)
+  47:14-47:19 | .field("journal", &self.journal)
+  48:14-48:19 | .field("poisoned", &self.poisoned)
+  49:14-49:20 | .finish()
+  50:5-50:6 | }
+  66:5-70:54 | pub fn push<E>(
+  71:9-71:13 | self.ensure_usable()?;
+  71:14-71:27 | self.ensure_usable()?;
+  71:29-71:30 | self.ensure_usable()?;
+  72:13-72:20 | let message = match PgOutputDecoder::decode(input) {
+  72:29-72:59 | let message = match PgOutputDecoder::decode(input) {
+  73:16-73:23 | Ok(message) => message,
+  73:28-73:35 | Ok(message) => message,
+  74:17-74:22 | Err(error) => {
+  75:17-75:37 | self.poisoned = true;
+  76:24-76:58 | return Err(ProcessorError::Decode(error));
+  79:9-79:13 | self.consume_message(message, apply)
+  79:14-79:29 | self.consume_message(message, apply)
+  79:30-79:37 | self.consume_message(message, apply)
+  79:39-79:44 | self.consume_message(message, apply)
+  80:5-80:6 | }
+  86:5-90:54 | pub fn consume_message<E>(
+  91:9-91:13 | self.ensure_usable()?;
+  91:14-91:27 | self.ensure_usable()?;
+  91:29-91:30 | self.ensure_usable()?;
+  92:13-92:18 | let batch = match self.stream.consume(message) {
+  92:27-92:38 | let batch = match self.stream.consume(message) {
+  92:39-92:46 | let batch = match self.stream.consume(message) {
+  92:47-92:54 | let batch = match self.stream.consume(message) {
+  93:21-93:26 | Ok(Some(batch)) => batch,
+  93:32-93:37 | Ok(Some(batch)) => batch,
+  94:32-94:62 | Ok(None) => return Ok(ProcessingOutcome::Pending),
+  95:17-95:22 | Err(error) => {
+  96:17-96:37 | self.poisoned = true;
+  97:24-97:58 | return Err(ProcessorError::Stream(error));
+  100:14-100:29 | let (acknowledge_lsn, replay) = self.apply_durable_batch(&batch, apply)?;
+  100:31-100:37 | let (acknowledge_lsn, replay) = self.apply_durable_batch(&batch, apply)?;
+  100:41-100:45 | let (acknowledge_lsn, replay) = self.apply_durable_batch(&batch, apply)?;
+  100:46-100:65 | let (acknowledge_lsn, replay) = self.apply_durable_batch(&batch, apply)?;
+  100:66-100:72 | let (acknowledge_lsn, replay) = self.apply_durable_batch(&batch, apply)?;
+  100:74-100:79 | let (acknowledge_lsn, replay) = self.apply_durable_batch(&batch, apply)?;
+  100:80-100:81 | let (acknowledge_lsn, replay) = self.apply_durable_batch(&batch, apply)?;
+  101:9-104:11 | Ok(ProcessingOutcome::Applied {
+  105:5-105:6 | }
+  107:5-111:39 | pub(crate) fn begin_transaction<E>(
+  112:9-112:13 | self.ensure_usable()?;
+  112:14-112:27 | self.ensure_usable()?;
+  112:29-112:30 | self.ensure_usable()?;
+  113:20-113:25 | if let Err(error) = self.stream.begin_transaction(xid, final_lsn) {
+  113:29-113:40 | if let Err(error) = self.stream.begin_transaction(xid, final_lsn) {
+  113:29-113:74 | if let Err(error) = self.stream.begin_transaction(xid, final_lsn) {
+  113:41-113:58 | if let Err(error) = self.stream.begin_transaction(xid, final_lsn) {
+  114:13-114:33 | self.poisoned = true;
+  115:20-115:54 | return Err(ProcessorError::Stream(error));
+  116:9-116:10 | }
+  117:9-117:15 | Ok(())
+  118:5-118:6 | }
+  120:5-125:72 | pub(crate) fn commit_transaction<E>(
+  126:9-126:13 | self.ensure_usable()?;
+  126:14-126:27 | self.ensure_usable()?;
+  126:29-126:30 | self.ensure_usable()?;
+  127:13-127:18 | let batch = match self.stream.commit_transaction(commit_lsn, end_lsn) {
+  127:27-127:38 | let batch = match self.stream.commit_transaction(commit_lsn, end_lsn) {
+  127:27-127:78 | let batch = match self.stream.commit_transaction(commit_lsn, end_lsn) {
+  127:39-127:57 | let batch = match self.stream.commit_transaction(commit_lsn, end_lsn) {
+  128:16-128:21 | Ok(batch) => batch,
+  128:26-128:31 | Ok(batch) => batch,
+  129:17-129:22 | Err(error) => {
+  130:17-130:37 | self.poisoned = true;
+  131:24-131:58 | return Err(ProcessorError::Stream(error));
+  134:9-134:13 | self.apply_durable_batch(&batch, apply)
+  134:14-134:33 | self.apply_durable_batch(&batch, apply)
+  134:34-134:40 | self.apply_durable_batch(&batch, apply)
+  134:42-134:47 | self.apply_durable_batch(&batch, apply)
+
+veyra-query/src/lib.rs: unique_zero_ranges=341
+  61:5-64:34 | pub fn try_new(
+  65:14-65:22 | for (expected, placement) in (0_u32..).zip(&placements) {
+  65:24-65:33 | for (expected, placement) in (0_u32..).zip(&placements) {
+  65:39-65:46 | for (expected, placement) in (0_u32..).zip(&placements) {
+  65:48-65:51 | for (expected, placement) in (0_u32..).zip(&placements) {
+  65:52-65:63 | for (expected, placement) in (0_u32..).zip(&placements) {
+  66:16-66:45 | if placement.room_id != expected {
+  67:24-70:19 | return Err(QueryError::SpatialNonDenseRoomId {
+  71:13-71:14 | }
+  73:13-73:21 | let room_ids = placements
+  73:24-74:20 | let room_ids = placements
+  75:14-75:17 | .map(|placement| placement.room_id)
+  76:14-76:21 | .collect::<Vec<_>>();
+  77:13-77:18 | let edges = edges.into_boxed_slice();
+  77:21-77:26 | let edges = edges.into_boxed_slice();
+  77:27-77:43 | let edges = edges.into_boxed_slice();
+  78:13-78:21 | let topology =
+  79:13-79:39 | RoomRelationIndex::try_new(&room_ids, &edges).map_err(QueryError::Topology)?;
+  79:40-79:49 | RoomRelationIndex::try_new(&room_ids, &edges).map_err(QueryError::Topology)?;
+  79:51-79:57 | RoomRelationIndex::try_new(&room_ids, &edges).map_err(QueryError::Topology)?;
+  79:59-79:66 | RoomRelationIndex::try_new(&room_ids, &edges).map_err(QueryError::Topology)?;
+  79:88-79:89 | RoomRelationIndex::try_new(&room_ids, &edges).map_err(QueryError::Topology)?;
+  80:9-83:11 | Ok(Self {
+  84:5-84:6 | }
+  87:5-87:31 | pub fn len(&self) -> usize {
+  88:9-88:24 | self.placements.len()
+  88:25-88:28 | self.placements.len()
+  89:5-89:6 | }
+  92:5-92:35 | pub fn is_empty(&self) -> bool {
+  93:9-93:24 | self.placements.is_empty()
+  93:25-93:33 | self.placements.is_empty()
+  94:5-94:6 | }
+  96:5-96:64 | fn placement(&self, room_id: u32) -> Option<&RoomPlacement> {
+  97:9-97:24 | usize::try_from(room_id)
+  97:25-97:32 | usize::try_from(room_id)
+  98:14-98:16 | .ok()
+  99:14-99:22 | .and_then(|index| self.placements.get(index))
+  99:31-99:46 | .and_then(|index| self.placements.get(index))
+  99:47-99:50 | .and_then(|index| self.placements.get(index))
+  99:51-99:56 | .and_then(|index| self.placements.get(index))
+  100:5-100:6 | }
+  102:5-102:45 | fn topology(&self) -> &RoomRelationIndex {
+  103:9-103:23 | &self.topology
+  104:5-104:6 | }
+  122:5-126:34 | pub fn try_new_with_spatial(
+  127:9-127:31 | Self::try_new_internal(availability, rooms, Some(spatial))
+  127:32-127:44 | Self::try_new_internal(availability, rooms, Some(spatial))
+  127:46-127:51 | Self::try_new_internal(availability, rooms, Some(spatial))
+  127:53-127:66 | Self::try_new_internal(availability, rooms, Some(spatial))
+  128:5-128:6 | }
+  142:21-142:31 | if let Some(projection) = &spatial
+  143:16-143:26 | && projection.len() != expected
+  143:16-143:44 | && projection.len() != expected
+  145:20-148:15 | return Err(QueryError::SpatialRoomCountMismatch {
+  146:17-146:25 | expected,
+  152:24-155:19 | return Err(QueryError::NonDenseRoomId {
+  158:24-158:70 | return Err(QueryError::InvalidAdultAge(room.room_id));
+  173:47-173:48 | .map_err(QueryError::Availability)?;
+  179:52-179:53 | let check_in_day = query.check_in_day_i32()?;
+  180:54-180:55 | let check_out_day = query.check_out_day_i32()?;
+  205:21-205:26 | Err(error) if is_restriction_rejection(error) => continue,
+  205:31-205:55 | Err(error) if is_restriction_rejection(error) => continue,
+  205:56-205:61 | Err(error) if is_restriction_rejection(error) => continue,
+  205:61-205:62 | Err(error) if is_restriction_rejection(error) => continue,
+  205:66-205:74 | Err(error) if is_restriction_rejection(error) => continue,
+  206:21-206:26 | Err(error) => return Err(QueryError::Restrictions(error)),
+  206:38-206:74 | Err(error) => return Err(QueryError::Restrictions(error)),
+  217:21-217:26 | Err(error) if is_occupancy_rejection(error) => continue,
+  217:31-217:53 | Err(error) if is_occupancy_rejection(error) => continue,
+  217:54-217:59 | Err(error) if is_occupancy_rejection(error) => continue,
+  217:59-217:60 | Err(error) if is_occupancy_rejection(error) => continue,
+  217:64-217:72 | Err(error) if is_occupancy_rejection(error) => continue,
+  218:21-218:26 | Err(error) => return Err(QueryError::Occupancy(error)),
+  218:38-218:71 | Err(error) => return Err(QueryError::Occupancy(error)),
+  254:93-254:94 | top_k(query.ranking, &rank_candidates, query.limit).map_err(QueryError::Ranking)?;
+  265:5-268:51 | pub fn search_multi_room(
+  269:9-269:34 | validate_multi_room_query(query)?;
+  269:35-269:40 | validate_multi_room_query(query)?;
+  269:41-269:42 | validate_multi_room_query(query)?;
+  270:9-270:13 | self.validate_multi_room_spatial_semantics(query)?;
+
+veyra-segment/src/lib.rs: unique_zero_ranges=41
+  34:18-34:36 | 2 => Ok(Self::Property),
+  35:18-35:36 | 3 => Ok(Self::RoomType),
+  36:18-36:35 | 4 => Ok(Self::Pricing),
+  37:18-37:33 | 5 => Ok(Self::Rules),
+  75:20-75:69 | return Err(SegmentError::PayloadTooLarge(payload.len()));
+  129:20-129:67 | return Err(SegmentError::TruncatedHeader(bytes.len()));
+  144:20-144:55 | return Err(SegmentError::LsnRangeReversed);
+  152:20-152:75 | return Err(SegmentError::InvalidPayloadOffset(payload_offset));
+  155:20-155:77 | return Err(SegmentError::PayloadTooLarge(MAX_PAYLOAD_BYTES + 1));
+  189:35-189:36 | let temp = temp_path(path)?;
+  195:29-195:30 | .open(&temp)?;
+  196:37-196:38 | file.write_all(&encoded)?;
+  197:28-197:29 | file.sync_all()?;
+  199:41-199:42 | std::fs::rename(&temp, path)?;
+  200:30-200:31 | sync_parent(path)?;
+  203:34-205:10 | if write_result.is_err() {
+  210:40-210:41 | let mut file = File::open(path)?;
+  211:39-211:40 | let metadata = file.metadata()?;
+  215:20-215:77 | return Err(SegmentError::PayloadTooLarge(MAX_PAYLOAD_BYTES + 1));
+  223:37-223:38 | file.read_to_end(&mut bytes)?;
+  238:16-238:22 | return Ok(());
+  242:27-242:28 | File::open(parent)?.sync_all()?;
+  242:39-242:40 | File::open(parent)?.sync_all()?;
+  294:5-294:69 | fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+  295:15-295:19 | match self {
+  296:22-296:27 | Self::Io(error) => write!(formatter, "segment I/O error: {error}"),
+  296:32-296:38 | Self::Io(error) => write!(formatter, "segment I/O error: {error}"),
+  296:39-296:48 | Self::Io(error) => write!(formatter, "segment I/O error: {error}"),
+  297:13-297:18 | other => write!(formatter, "{other:?}"),
+  297:22-297:28 | other => write!(formatter, "{other:?}"),
+  297:29-297:38 | other => write!(formatter, "{other:?}"),
+  299:5-299:6 | }
+  302:5-302:67 | fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+  303:15-303:19 | match self {
+  304:22-304:27 | Self::Io(error) => Some(error),
+  304:32-304:43 | Self::Io(error) => Some(error),
+  305:18-305:22 | _ => None,
+  307:5-307:6 | }
+  310:5-310:38 | fn from(value: io::Error) -> Self {
+  311:9-311:24 | Self::Io(value)
+  312:5-312:6 | }
+
+veyra-solver/src/lib.rs: unique_zero_ranges=107
+  117:1-124:39 | pub fn solve_priced(
+  125:8-125:37 | if check_out_day <= check_in_day {
+  126:16-126:50 | return Err(SolverError::InvalidStayRange);
+  127:5-127:6 | }
+  128:9-128:15 | let window = PricingWindow {
+  128:18-131:6 | let window = PricingWindow {
+  132:9-132:17 | let prepared = offers
+  132:20-132:26 | let prepared = offers
+  133:10-133:14 | .iter()
+  134:10-134:13 | .map(|offer| PreparedOffer {
+  135:22-135:35 | room_id: offer.room_id,
+  136:20-136:31 | floor: offer.floor,
+  137:23-137:37 | building: offer.building,
+  138:24-138:39 | adult_age: offer.adult_age,
+  139:29-139:50 | occupancy_rule: &offer.occupancy_rule,
+  140:20-144:14 | price: PriceSource::Dynamic {
+  141:25-141:38 | prices: &offer.prices,
+  145:9-145:10 | })
+  146:10-146:17 | .collect::<Vec<_>>();
+  147:5-147:19 | solve_prepared(party, check_in, prepared, None, config)
+  147:20-147:25 | solve_prepared(party, check_in, prepared, None, config)
+  147:27-147:35 | solve_prepared(party, check_in, prepared, None, config)
+  147:37-147:45 | solve_prepared(party, check_in, prepared, None, config)
+  147:47-147:51 | solve_prepared(party, check_in, prepared, None, config)
+  147:53-147:59 | solve_prepared(party, check_in, prepared, None, config)
+  148:1-148:2 | }
+  151:1-159:39 | pub fn solve_priced_with_topology(
+  160:8-160:37 | if check_out_day <= check_in_day {
+  161:16-161:50 | return Err(SolverError::InvalidStayRange);
+  162:5-162:6 | }
+  163:9-163:15 | let window = PricingWindow {
+  163:18-166:6 | let window = PricingWindow {
+  167:9-167:17 | let prepared = offers
+  167:20-167:26 | let prepared = offers
+  168:10-168:14 | .iter()
+  169:10-169:13 | .map(|offer| PreparedOffer {
+  170:22-170:35 | room_id: offer.room_id,
+  171:20-171:31 | floor: offer.floor,
+  172:23-172:37 | building: offer.building,
+  173:24-173:39 | adult_age: offer.adult_age,
+  174:29-174:50 | occupancy_rule: &offer.occupancy_rule,
+  175:20-179:14 | price: PriceSource::Dynamic {
+  176:25-176:38 | prices: &offer.prices,
+  180:9-180:10 | })
+  181:10-181:17 | .collect::<Vec<_>>();
+  182:5-182:19 | solve_prepared(party, check_in, prepared, Some(topology), config)
+  182:20-182:25 | solve_prepared(party, check_in, prepared, Some(topology), config)
+  182:27-182:35 | solve_prepared(party, check_in, prepared, Some(topology), config)
+  182:37-182:45 | solve_prepared(party, check_in, prepared, Some(topology), config)
+  182:47-182:61 | solve_prepared(party, check_in, prepared, Some(topology), config)
+  182:63-182:69 | solve_prepared(party, check_in, prepared, Some(topology), config)
+  183:1-183:2 | }
+  259:16-263:11 | return Ok(SolverResult {
+  270:16-270:77 | return Err(SolverError::TooManyValidSolutions(valid_solution_count));
+  305:16-305:67 | return Err(SolverError::TooManyTravelers(travelers.len()));
+  314:16-314:47 | return Err(SolverError::InvalidBudget);
+  319:20-319:68 | return Err(SolverError::InvalidAdultAge(offer.room_id));
+  321:12-321:20 | if matches!(offer.price, PriceSource::Static(price) if price.get() < 0) {
+  321:54-321:59 | if matches!(offer.price, PriceSource::Static(price) if price.get() < 0) {
+  321:78-321:79 | if matches!(offer.price, PriceSource::Static(price) if price.get() < 0) {
+  322:20-322:70 | return Err(SolverError::NegativeRoomPrice(offer.room_id));
+  325:20-325:68 | return Err(SolverError::DuplicateRoomId(offer.room_id));
+  328:17-328:22 | if let Some(index) = topology {
+  329:13-329:18 | for offer in offers {
+  329:22-329:28 | for offer in offers {
+  330:16-330:51 | if !index.contains_room(offer.room_id) {
+  330:17-330:22 | if !index.contains_room(offer.room_id) {
+  331:24-331:76 | return Err(SolverError::TopologyMissingRoom(offer.room_id));
+  332:13-332:14 | }
+  346:21-346:72 | SolverError::UnsupportedPreference(intent.relation)
+  350:5-350:6 | }
+  377:50-377:51 | if partial_hard_constraints_hold(context)? {
+  386:46-386:47 | if !layout_hard_constraints_hold(context)? {
+  387:16-387:22 | return Ok(());
+  413:52-413:53 | let room_price = offer.price_for(occupancy)?;
+  425:52-425:53 | let soft_penalty = layout_soft_penalty(context)?;
+  441:55-441:56 | let left = assignment_of(context, intent.left)?;
+  442:57-442:58 | let right = assignment_of(context, intent.right)?;
+  443:78-443:79 | let valid = relation_satisfied(context, left, right, intent.relation)?;
+  445:20-445:29 | return Ok(false);
+
