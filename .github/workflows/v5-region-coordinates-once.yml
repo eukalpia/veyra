@@ -1,0 +1,103 @@
+name: V5 region coordinates once
+
+on:
+  push:
+    branches:
+      - agent/v1-production-completion
+    paths:
+      - .github/workflows/v5-region-coordinates-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/v1-production-completion
+          fetch-depth: 0
+      - name: Install coverage toolchain
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt
+          rustup toolchain install nightly --profile minimal --component llvm-tools-preview
+          cargo install cargo-llvm-cov --locked
+      - name: Materialize V4 candidate
+        shell: bash
+        run: |
+          python3 tools/final-hardening/apply.py transform
+          python3 tools/final-hardening/apply.py tests
+          cat tools/final-hardening/regions_v3.py.gz.b64.part{1,2,3,4} | base64 -d | gzip -d > /tmp/r3.py
+          python3 /tmp/r3.py
+          python3 tools/final-hardening/regions_v4.py
+          python3 - <<'PY'
+          from pathlib import Path
+          matrix=Path('crates/veyra-query/tests/multi_room_matrix.rs'); text=matrix.read_text()
+          text=text.replace("fn query<'a>(party: &'a BookingParty, profile: SolutionProfile) -> MultiRoomStayQuery<'a> {\n", "fn query(party: &BookingParty, profile: SolutionProfile) -> MultiRoomStayQuery<'_> {\n")
+          matrix.write_text(text)
+          server=Path('crates/veyra-server/tests/query_success_matrix.rs'); text=server.read_text().replace('.unwrap_err();','.err().unwrap_or_else(|| unreachable!());',1); server.write_text(text)
+          solver=Path('crates/veyra-solver/src/lib.rs'); text=solver.read_text()
+          for old,new in [("fn prepared<'a>(","fn prepared("),("policy: &'a CompiledRule,","policy: &CompiledRule,"),(") -> PreparedOffer<'a> {",") -> PreparedOffer<'_> {"),("fn static_offer<'a>(id: u32, rule: &'a CompiledRule, price: i64) -> PreparedOffer<'a> {","fn static_offer(id: u32, rule: &CompiledRule, price: i64) -> PreparedOffer<'_> {")]:
+              text=text.replace(old,new,1)
+          solver.write_text(text)
+          checkpoint=Path('crates/veyra-cdc/src/checkpoint.rs'); text=checkpoint.read_text()
+          text=text.replace('        assert_eq!(\n            validate_transition(AppliedState::default(), state(10, 11, 1)),\n            Ok(())\n        );','        assert!(validate_transition(AppliedState::default(), state(10, 11, 1)).is_ok());',1)
+          text=text.replace('        assert_eq!(validate_transition(current, current), Ok(()));','        assert!(validate_transition(current, current).is_ok());',1)
+          checkpoint.write_text(text)
+          PY
+          cargo generate-lockfile
+          cargo fmt --all
+      - name: Export hotspot zero-count CodeRegion coordinates
+        shell: bash
+        run: |
+          d=$(mktemp -d); rsync -a --exclude .git ./ "$d/"; cd "$d"
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          for root in Path('crates').glob('*/src/lib.rs'):
+              t=root.read_text(); m='#![feature(coverage_attribute)]\n'
+              if not t.startswith(m): root.write_text(m+t)
+          for p in Path('crates').glob('*/src/*.rs'):
+              t=p.read_text(); t=re.sub(r'(#\[cfg\(test\)\]\n)(?!#\[coverage\(off\)\]\n)',r'\1#[coverage(off)]\n',t); t=t.replace('// coverage: external-postgres-transport\n','#[coverage(off)]\n'); p.write_text(t)
+          PY
+          cargo +nightly llvm-cov --workspace --all-features --lib --tests --locked --ignore-filename-regex 'crates/veyra-server/src/main.rs' --summary-only >/dev/null
+          cargo +nightly llvm-cov report --ignore-filename-regex 'crates/veyra-server/src/main.rs' --json --output-path /tmp/v5.json
+          python3 - <<'PY'
+          import json
+          from collections import defaultdict
+          from pathlib import Path
+          hot={'veyra-cdc/src/checkpoint.rs','veyra-cdc/src/journal_v2.rs','veyra-cdc/src/live.rs','veyra-cdc/src/processor.rs','veyra-query/src/lib.rs','veyra-segment/src/lib.rs','veyra-solver/src/lib.rs'}
+          data=json.loads(Path('/tmp/v5.json').read_text())['data'][0]
+          found=defaultdict(set)
+          for fn in data.get('functions',[]):
+              names=fn.get('filenames',[])
+              for r in fn.get('regions',[]):
+                  if len(r)<8 or r[4]!=0 or r[7]!=0: continue
+                  fid=r[5]
+                  if not isinstance(fid,int) or not 0<=fid<len(names): continue
+                  n=names[fid]
+                  if '/crates/' in n: n=n.split('/crates/',1)[1]
+                  elif n.startswith('crates/'): n=n[len('crates/'):]
+                  if n in hot: found[n].add((r[0],r[1],r[2],r[3]))
+          out=['V5 ZERO-COUNT CODEREGION COORDINATES (deduplicated source ranges)','']
+          for n in sorted(found):
+              src=Path('crates/'+n).read_text().splitlines(); rows=sorted(found[n])
+              out.append(f'{n}: unique_zero_ranges={len(rows)}')
+              for a,b,c,d in rows[:80]:
+                  snippet=src[a-1].strip() if 0<a<=len(src) else ''
+                  out.append(f'  {a}:{b}-{c}:{d} | {snippet}')
+              out.append('')
+          Path('/tmp/v5-coordinates.txt').write_text('\n'.join(out)+'\n')
+          PY
+      - name: Publish diagnostic and remove workflow
+        shell: bash
+        run: |
+          git reset --hard HEAD
+          cp /tmp/v5-coordinates.txt docs/ci-checkpoints/v5-region-coordinates.txt
+          git rm .github/workflows/v5-region-coordinates-once.yml
+          git add docs/ci-checkpoints/v5-region-coordinates.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "ci: record hotspot zero-count CodeRegion coordinates"
+          git push origin HEAD:agent/v1-production-completion
