@@ -41,3 +41,19 @@ jobs:
         shell: bash
         run: |
           python3 tools/final-hardening/apply.py tests
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('crates/veyra-server/tests/query_success_matrix.rs')
+          text = path.read_text()
+          old = '''        )
+              .unwrap_err();
+          '''
+          new = '''        )
+              .err()
+              .unwrap_or_else(|| unreachable!());
+          '''
+          if old in text:
+              path.write_text(text.replace(old, new, 1))
+          elif new not in text:
+              raise SystemExit('server error extraction site not found')
+          PY
