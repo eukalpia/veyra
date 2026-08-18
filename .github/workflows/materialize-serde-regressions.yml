@@ -1,0 +1,109 @@
+name: Materialize serde regressions
+
+on:
+  push:
+    branches:
+      - agent/v1-production-completion
+    paths:
+      - .github/workflows/materialize-serde-regressions.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: veyra-v1-branch-writer
+  cancel-in-progress: false
+
+jobs:
+  recover-and-verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/v1-production-completion
+          fetch-depth: 0
+      - name: Install pinned Rust
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Recover original RED patches from branch history
+        shell: bash
+        run: |
+          mkdir -p /tmp/veyra-red-patches
+          mapfile -t paths < <(git log --all --name-only --pretty=format: -- 'tools/patches/*red*.patch' | sed '/^$/d' | sort -u)
+          if [ "${#paths[@]}" -eq 0 ]; then
+            echo "No historical RED patches found" >&2
+            exit 1
+          fi
+          for path in "${paths[@]}"; do
+            found=""
+            while read -r commit; do
+              if git cat-file -e "$commit:$path" 2>/dev/null; then
+                found="$commit"
+                break
+              fi
+            done < <(git log --all --format=%H -- "$path")
+            if [ -z "$found" ]; then
+              echo "Could not recover $path" >&2
+              exit 1
+            fi
+            destination="/tmp/veyra-red-patches/$(basename "$path")"
+            git show "$found:$path" > "$destination"
+            echo "Recovered $path from $found"
+          done
+      - name: Apply regression tests
+        shell: bash
+        run: |
+          for patch in /tmp/veyra-red-patches/*.patch; do
+            echo "Applying $patch"
+            if git apply --check "$patch"; then
+              git apply "$patch"
+            else
+              git apply --3way "$patch"
+            fi
+          done
+          cargo fmt --all
+      - name: Verify recovered regressions
+        run: |
+          cargo generate-lockfile
+          cargo test -p veyra-types -p veyra-cdc -p veyra-runtime --all-features --locked
+          cargo clippy -p veyra-types -p veyra-cdc -p veyra-runtime --all-targets --all-features --locked -- -D warnings
+      - name: Keep only permanent Rust regressions
+        shell: bash
+        run: |
+          mapfile -t changed < <(git diff --name-only)
+          git reset --hard HEAD
+          kept=0
+          for file in "${changed[@]}"; do
+            case "$file" in
+              crates/*.rs|crates/*/*.rs|crates/*/*/*.rs|crates/*/*/*/*.rs)
+                for patch in /tmp/veyra-red-patches/*.patch; do
+                  git apply --include="$file" "$patch" 2>/dev/null || true
+                done
+                if git diff --quiet -- "$file"; then
+                  continue
+                fi
+                if ! grep -q '#\[test\]\|#\[tokio::test\]' "$file"; then
+                  echo "Refusing non-test Rust change from RED patch: $file" >&2
+                  exit 1
+                fi
+                kept=$((kept + 1))
+                ;;
+            esac
+          done
+          if [ "$kept" -eq 0 ]; then
+            echo "No permanent Rust regression files recovered" >&2
+            exit 1
+          fi
+          cargo fmt --all
+          cargo test -p veyra-types -p veyra-cdc -p veyra-runtime --all-features --locked
+      - name: Commit permanent regressions
+        shell: bash
+        run: |
+          git rm .github/workflows/materialize-serde-regressions.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates .github/workflows/materialize-serde-regressions.yml
+          git commit -m "test: persist serialized invariant regressions"
+          git fetch origin agent/v1-production-completion
+          git rebase origin/agent/v1-production-completion
+          git push origin HEAD:agent/v1-production-completion
