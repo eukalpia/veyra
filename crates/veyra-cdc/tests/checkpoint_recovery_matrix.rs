@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use veyra_cdc::{
@@ -9,14 +10,16 @@ use veyra_types::LogSequenceNumber;
 
 const RECORD_LEN: usize = 36;
 const BODY_LEN: usize = 32;
+static PATH_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 fn path(label: &str) -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
+    let sequence = PATH_SEQUENCE.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir().join(format!(
-        "veyra-checkpoint-matrix-{label}-{}-{nanos}.bin",
+        "veyra-checkpoint-matrix-{label}-{}-{nanos}-{sequence}.bin",
         std::process::id()
     ))
 }
