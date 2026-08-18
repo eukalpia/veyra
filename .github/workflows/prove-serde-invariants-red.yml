@@ -18,6 +18,15 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: agent/v1-production-completion
+      - name: Publish RED run locator
+        shell: bash
+        run: |
+          printf '%s\n%s\n' "$GITHUB_RUN_ID" "$GITHUB_SHA" > docs/.serde-invariants-red-run
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/.serde-invariants-red-run
+          git commit -m "ci: record serde invariant RED run"
+          git push origin HEAD:agent/v1-production-completion
       - name: Install pinned Rust
         run: rustup toolchain install 1.97.1 --profile minimal
       - name: Synchronize dependency graph for the test harness
@@ -49,8 +58,8 @@ jobs:
           if [ -f tools/patches/runtime-phase-red.patch ]; then
             git rm tools/patches/runtime-phase-red.patch
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Cargo.lock
           git commit -m "build: synchronize serde invariant test dependencies"
+          git fetch origin agent/v1-production-completion
+          git rebase origin/agent/v1-production-completion
           git push origin HEAD:agent/v1-production-completion
