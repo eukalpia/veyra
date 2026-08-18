@@ -89,8 +89,16 @@ jobs:
 
           generated = Path('crates/veyra-query/tests/multi_room_matrix.rs')
           generated_text = generated.read_text()
-          old = "fn query<'a>(party: &'a BookingParty, profile: SolutionProfile) -> MultiRoomStayQuery<'a> {"
-          new = "fn query(party: &BookingParty, profile: SolutionProfile) -> MultiRoomStayQuery<'_> {"
+          old = """fn query<'a>(
+              party: &'a BookingParty,
+              profile: SolutionProfile,
+          ) -> MultiRoomStayQuery<'a> {
+          """
+          new = """fn query(
+              party: &BookingParty,
+              profile: SolutionProfile,
+          ) -> MultiRoomStayQuery<'_> {
+          """
           if old not in generated_text:
               raise SystemExit('expected explicit-lifetime helper not found')
           generated.write_text(generated_text.replace(old, new, 1))
