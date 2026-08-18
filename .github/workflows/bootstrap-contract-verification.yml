@@ -1,0 +1,18 @@
+name: Bootstrap contract verification
+
+on:
+  pull_request:
+    branches:
+      - agent/v1-production-completion
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Bootstrap and snapshot contract
+        run: cargo test -p veyra-cdc --test bootstrap_contract --locked
