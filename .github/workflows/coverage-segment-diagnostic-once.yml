@@ -1,0 +1,155 @@
+name: Coverage segment diagnostic once
+
+on:
+  push:
+    branches:
+      - agent/v1-production-completion
+    paths:
+      - .github/workflows/coverage-segment-diagnostic-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/v1-production-completion
+          fetch-depth: 0
+      - name: Install coverage toolchain
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt
+          rustup toolchain install nightly --profile minimal --component llvm-tools-preview
+          cargo install cargo-llvm-cov --locked
+      - name: Materialize current hardening candidate
+        shell: bash
+        run: |
+          python3 tools/final-hardening/apply.py transform
+          python3 tools/final-hardening/apply.py tests
+          python3 - <<'PY'
+          from pathlib import Path
+          matrix = Path('crates/veyra-query/tests/multi_room_matrix.rs')
+          text = matrix.read_text()
+          explicit = "fn query<'a>(party: &'a BookingParty, profile: SolutionProfile) -> MultiRoomStayQuery<'a> {\n"
+          elided = "fn query(party: &BookingParty, profile: SolutionProfile) -> MultiRoomStayQuery<'_> {\n"
+          if explicit in text:
+              text = text.replace(explicit, elided, 1)
+          matrix.write_text(text)
+          server = Path('crates/veyra-server/tests/query_success_matrix.rs')
+          text = server.read_text()
+          if '.unwrap_err();' in text:
+              text = text.replace('.unwrap_err();', '.err().unwrap_or_else(|| unreachable!());', 1)
+          server.write_text(text)
+          solver = Path('crates/veyra-solver/src/lib.rs')
+          text = solver.read_text()
+          for old, new in [
+              ("fn prepared<'a>(", "fn prepared("),
+              ("policy: &'a CompiledRule,", "policy: &CompiledRule,"),
+              (") -> PreparedOffer<'a> {", ") -> PreparedOffer<'_> {"),
+          ]:
+              if old in text:
+                  text = text.replace(old, new, 1)
+          solver.write_text(text)
+          checkpoint = Path('crates/veyra-cdc/src/checkpoint.rs')
+          text = checkpoint.read_text()
+          for old, new in [
+              ('        assert_eq!(\n            validate_transition(AppliedState::default(), state(10, 11, 1)),\n            Ok(())\n        );', '        assert!(validate_transition(AppliedState::default(), state(10, 11, 1)).is_ok());'),
+              ('        assert_eq!(validate_transition(current, current), Ok(()));', '        assert!(validate_transition(current, current).is_ok());'),
+          ]:
+              if old in text:
+                  text = text.replace(old, new, 1)
+          checkpoint.write_text(text)
+          PY
+          cargo generate-lockfile
+          cargo fmt --all
+      - name: Export and validate segment map
+        shell: bash
+        run: |
+          coverage_dir=$(mktemp -d)
+          rsync -a --exclude .git ./ "$coverage_dir/"
+          cd "$coverage_dir"
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          for root in Path('crates').glob('*/src/lib.rs'):
+              text = root.read_text()
+              marker = '#![feature(coverage_attribute)]\n'
+              if not text.startswith(marker):
+                  root.write_text(marker + text)
+          for path in Path('crates').glob('*/src/*.rs'):
+              text = path.read_text()
+              text = re.sub(r'(#\[cfg\(test\)\]\n)(?!#\[coverage\(off\)\]\n)', r'\1#[coverage(off)]\n', text)
+              text = text.replace('// coverage: external-postgres-transport\n', '#[coverage(off)]\n')
+              path.write_text(text)
+          PY
+          cargo +nightly llvm-cov --workspace --all-features --lib --tests --locked \
+            --ignore-filename-regex 'crates/veyra-server/src/main.rs' --summary-only >/tmp/segment-summary.txt
+          cargo +nightly llvm-cov report --ignore-filename-regex 'crates/veyra-server/src/main.rs' \
+            --json --output-path /tmp/segment-coverage.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path('/tmp/segment-coverage.json').read_text())
+          data = payload['data'][0]
+          summary_total = data['totals']['regions']['count']
+          summary_covered = data['totals']['regions']['covered']
+          summary_missing = summary_total - summary_covered
+          rows = []
+          total_entries = 0
+          missing_entries = 0
+          for file in data.get('files', []):
+              filename = file['filename']
+              if '/crates/' in filename:
+                  filename = 'crates/' + filename.split('/crates/', 1)[1]
+              if not filename.startswith('crates/'):
+                  continue
+              entries = []
+              for segment in file.get('segments', []):
+                  # [line, col, count, hasCount, isRegionEntry, isGapRegion]
+                  if len(segment) < 6:
+                      continue
+                  line, col, count, has_count, is_entry, is_gap = segment[:6]
+                  if has_count and is_entry and not is_gap:
+                      total_entries += 1
+                      if count == 0:
+                          missing_entries += 1
+                          entries.append((line, col))
+              if entries:
+                  source = Path(filename).read_text().splitlines()
+                  for line, col in entries:
+                      snippet = source[line - 1].strip() if 0 < line <= len(source) else ''
+                      rows.append((filename, line, col, snippet))
+          out = [
+              'LLVM SEGMENT REGION DIAGNOSTIC',
+              '',
+              Path('/tmp/segment-summary.txt').read_text(),
+              '',
+              f'summary_total_regions={summary_total}',
+              f'summary_missing_regions={summary_missing}',
+              f'segment_region_entries={total_entries}',
+              f'segment_zero_count_entries={missing_entries}',
+              f'segment_count_matches_summary={total_entries == summary_total}',
+              f'segment_missing_matches_summary={missing_entries == summary_missing}',
+              '',
+          ]
+          current = None
+          for filename, line, col, snippet in sorted(rows):
+              if filename != current:
+                  current = filename
+                  out.append(filename)
+              out.append(f'  {line}:{col} | {snippet}')
+          Path('/tmp/coverage-region-gaps.txt').write_text('\n'.join(out) + '\n')
+          PY
+      - name: Publish validated segment diagnostic only
+        shell: bash
+        run: |
+          git reset --hard HEAD
+          cp /tmp/coverage-region-gaps.txt docs/ci-checkpoints/coverage-region-gaps.txt
+          git rm .github/workflows/coverage-segment-diagnostic-once.yml
+          git add docs/ci-checkpoints/coverage-region-gaps.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "ci: record LLVM segment region diagnostic"
+          git push origin HEAD:agent/v1-production-completion
