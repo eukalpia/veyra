@@ -52,7 +52,7 @@ async fn live_postgres_transaction_is_durable_applied_checkpointed_and_acknowled
     };
 
     let summary = tokio::time::timeout(
-        Duration::from_secs(60),
+        Duration::from_mins(1),
         run_pgwire(config, &journal_path, &checkpoint_path, &mut apply),
     )
     .await??;
