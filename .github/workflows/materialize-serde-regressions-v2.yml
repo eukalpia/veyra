@@ -1,0 +1,76 @@
+name: Materialize serde regressions v2
+
+on:
+  push:
+    branches:
+      - agent/v1-production-completion
+    paths:
+      - .github/workflows/materialize-serde-regressions-v2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: materialize-serde-regressions-v2
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/v1-production-completion
+          fetch-depth: 0
+      - name: Install pinned Rust
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Recover patches and produce test-only diff
+        shell: bash
+        run: |
+          git worktree add /tmp/veyra-regressions HEAD
+          mkdir -p /tmp/veyra-red-patches
+          mapfile -t paths < <(git log --all --name-only --pretty=format: -- 'tools/patches/*red*.patch' | sed '/^$/d' | sort -u)
+          if [ "${#paths[@]}" -eq 0 ]; then
+            echo "No historical RED patches found" >&2
+            exit 1
+          fi
+          for path in "${paths[@]}"; do
+            found=""
+            while read -r commit; do
+              if git cat-file -e "$commit:$path" 2>/dev/null; then
+                found="$commit"
+                break
+              fi
+            done < <(git log --all --format=%H -- "$path")
+            test -n "$found"
+            git show "$found:$path" > "/tmp/veyra-red-patches/$(basename "$path")"
+          done
+          for patch in /tmp/veyra-red-patches/*.patch; do
+            (cd /tmp/veyra-regressions && git apply --check "$patch" && git apply "$patch")
+          done
+          (cd /tmp/veyra-regressions && cargo fmt --all)
+          (cd /tmp/veyra-regressions && cargo test -p veyra-types -p veyra-cdc -p veyra-runtime --all-features --locked)
+          (cd /tmp/veyra-regressions && cargo clippy -p veyra-types -p veyra-cdc -p veyra-runtime --all-targets --all-features --locked -- -D warnings)
+          (cd /tmp/veyra-regressions && find crates -type f -name '*.rs' -exec git add -N -- '{}' +)
+          (cd /tmp/veyra-regressions && git diff -- crates) > /tmp/serde-regressions.patch
+          test -s /tmp/serde-regressions.patch
+          git worktree remove --force /tmp/veyra-regressions
+      - name: Apply permanent regressions to branch
+        run: |
+          git apply --check /tmp/serde-regressions.patch
+          git apply /tmp/serde-regressions.patch
+          cargo fmt --all
+          cargo test -p veyra-types -p veyra-cdc -p veyra-runtime --all-features --locked
+          cargo clippy -p veyra-types -p veyra-cdc -p veyra-runtime --all-targets --all-features --locked -- -D warnings
+      - name: Commit permanent regressions
+        shell: bash
+        run: |
+          git rm .github/workflows/materialize-serde-regressions-v2.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates .github/workflows/materialize-serde-regressions-v2.yml
+          git commit -m "test: persist serialized invariant regressions"
+          git fetch origin agent/v1-production-completion
+          git rebase origin/agent/v1-production-completion
+          git push origin HEAD:agent/v1-production-completion
