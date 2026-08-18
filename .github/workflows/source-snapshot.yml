@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - agent/m0-foundation-ci
+      - agent/v1-production-completion
 
 permissions:
   contents: read

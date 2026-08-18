@@ -2,20 +2,28 @@
 
 //! Typed deterministic Veyra search pipeline.
 //!
-//! V1 deliberately implements a single-room vertical path. Complex multi-room parties are handled
-//! by `veyra-solver`. Hard validity always precedes ranking and missing projection state fails the
-//! whole query closed instead of silently hiding a potentially valid property.
+//! Veyra exposes both a fast single-room path and an exact bounded multi-room path.
+//! Hard validity always precedes ranking and missing projection state fails the whole query closed
+//! instead of silently hiding a potentially valid property.
 
-use core::fmt;
-use veyra_availability::{AvailabilityError, AvailabilityIndex};
+use core::{cmp::Ordering, fmt};
+use std::collections::BTreeMap;
+use veyra_availability::{AvailabilityError, AvailabilityIndex, DenseRoomSet};
 use veyra_occupancy::{OccupancyError, validate_room};
-use veyra_party::{BookingParty, CivilDate};
+use veyra_party::{BookingParty, CivilDate, RoomingRelation};
 use veyra_pricing::{MoneyMicros, OccupancyAdjustment, PriceVector, PricingError};
 use veyra_ranking::{
     MAX_TOP_K, RankCandidate, RankedCandidate, RankingError, RankingProfile, top_k,
 };
 use veyra_restrictions::{CompiledRestrictions, RestrictionError};
 use veyra_rule_compiler::CompiledRule;
+use veyra_solver::{
+    HARD_MAX_ROOMS, HARD_MAX_TRAVELERS, PricedRoomOffer, RoomRelationIndex, SolverError,
+    TopologyError, solve_priced, solve_priced_with_topology,
+};
+pub use veyra_solver::{
+    RoomAllocation, RoomTopologyEdge, RoomTopologyRelation, SolutionProfile, SolverConfig,
+};
 
 pub const MAX_QUERY_PARTY: usize = 64;
 
@@ -35,10 +43,71 @@ pub struct RoomDocument {
     pub family_penalty: u16,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RoomPlacement {
+    pub room_id: u32,
+    pub floor: u16,
+    pub building: u16,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RoomSpatialProjection {
+    placements: Vec<RoomPlacement>,
+    topology: RoomRelationIndex,
+}
+
+impl RoomSpatialProjection {
+    pub fn try_new(
+        placements: Vec<RoomPlacement>,
+        edges: Vec<RoomTopologyEdge>,
+    ) -> Result<Self, QueryError> {
+        for (expected, placement) in (0_u32..).zip(&placements) {
+            if placement.room_id != expected {
+                return Err(QueryError::SpatialNonDenseRoomId {
+                    expected,
+                    actual: placement.room_id,
+                });
+            }
+        }
+        let room_ids = placements
+            .iter()
+            .map(|placement| placement.room_id)
+            .collect::<Vec<_>>();
+        let edges = edges.into_boxed_slice();
+        let topology =
+            RoomRelationIndex::try_new(&room_ids, &edges).map_err(QueryError::Topology)?;
+        Ok(Self {
+            placements,
+            topology,
+        })
+    }
+
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.placements.len()
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.placements.is_empty()
+    }
+
+    fn placement(&self, room_id: u32) -> Option<&RoomPlacement> {
+        usize::try_from(room_id)
+            .ok()
+            .and_then(|index| self.placements.get(index))
+    }
+
+    fn topology(&self) -> &RoomRelationIndex {
+        &self.topology
+    }
+}
+
 #[derive(Debug)]
 pub struct SearchEngine {
     availability: AvailabilityIndex,
     rooms: Vec<RoomDocument>,
+    spatial: Option<RoomSpatialProjection>,
 }
 
 impl SearchEngine {
@@ -46,11 +115,35 @@ impl SearchEngine {
         availability: AvailabilityIndex,
         rooms: Vec<RoomDocument>,
     ) -> Result<Self, QueryError> {
+        Self::try_new_internal(availability, rooms, None)
+    }
+
+    pub fn try_new_with_spatial(
+        availability: AvailabilityIndex,
+        rooms: Vec<RoomDocument>,
+        spatial: RoomSpatialProjection,
+    ) -> Result<Self, QueryError> {
+        Self::try_new_internal(availability, rooms, Some(spatial))
+    }
+
+    fn try_new_internal(
+        availability: AvailabilityIndex,
+        rooms: Vec<RoomDocument>,
+        spatial: Option<RoomSpatialProjection>,
+    ) -> Result<Self, QueryError> {
         let expected = availability.room_count() as usize;
         if rooms.len() != expected {
             return Err(QueryError::RoomDocumentCountMismatch {
                 expected,
                 actual: rooms.len(),
+            });
+        }
+        if let Some(projection) = &spatial
+            && projection.len() != expected
+        {
+            return Err(QueryError::SpatialRoomCountMismatch {
+                expected,
+                actual: projection.len(),
             });
         }
         for (expected_id, room) in (0_u32..).zip(&rooms) {
@@ -67,6 +160,7 @@ impl SearchEngine {
         Ok(Self {
             availability,
             rooms,
+            spatial,
         })
     }
 
@@ -159,6 +253,114 @@ impl SearchEngine {
         explain.returned = hits.len();
         Ok(SearchResult { hits, explain })
     }
+
+    /// Searches exact multi-room allocations inside each property.
+    ///
+    /// Candidate rooms are never mixed across properties. Any missing topology semantics, solver
+    /// proof-budget exhaustion, or property candidate set larger than the solver's exact bound
+    /// fails the whole query closed instead of silently dropping a potentially optimal result.
+    pub fn search_multi_room(
+        &self,
+        query: &MultiRoomStayQuery<'_>,
+    ) -> Result<MultiRoomSearchResult, QueryError> {
+        validate_multi_room_query(query)?;
+        self.validate_multi_room_spatial_semantics(query)?;
+        let available = self
+            .availability
+            .available_for_stay(query.check_in_day, query.check_out_day)
+            .map_err(QueryError::Availability)?;
+        let check_in_day = query.check_in_day_i32()?;
+        let check_out_day = query.check_out_day_i32()?;
+        let mut explain = MultiRoomQueryExplain::new(self.rooms.len(), available.len());
+        let grouped = self.collect_multi_room_candidates(
+            query,
+            check_in_day,
+            check_out_day,
+            &available,
+            &mut explain,
+        )?;
+        let mut hits = solve_multi_room_properties(
+            query,
+            check_in_day,
+            check_out_day,
+            grouped,
+            self.spatial.as_ref().map(RoomSpatialProjection::topology),
+            &mut explain,
+        )?;
+        hits.sort_by(|left, right| compare_multi_room_hits(left, right, query.profile));
+        hits.truncate(query.limit);
+        explain.returned = hits.len();
+        Ok(MultiRoomSearchResult { hits, explain })
+    }
+
+    fn collect_multi_room_candidates(
+        &self,
+        query: &MultiRoomStayQuery<'_>,
+        check_in_day: i32,
+        check_out_day: i32,
+        available: &DenseRoomSet,
+        explain: &mut MultiRoomQueryExplain,
+    ) -> Result<BTreeMap<u32, Vec<PricedRoomOffer>>, QueryError> {
+        let zero_adjustment = OccupancyAdjustment {
+            per_adult_per_night: MoneyMicros::signed(0),
+            per_child_per_night: MoneyMicros::signed(0),
+        };
+        let mut grouped = BTreeMap::<u32, Vec<PricedRoomOffer>>::new();
+        for room_id in available {
+            let room = &self.rooms[room_id as usize];
+            if room.destination_id != query.destination_id {
+                continue;
+            }
+            explain.destination_candidates += 1;
+            match room.restrictions.validate_stay(check_in_day, check_out_day) {
+                Ok(_) => explain.restriction_candidates += 1,
+                Err(error) if is_restriction_rejection(error) => continue,
+                Err(error) => return Err(QueryError::Restrictions(error)),
+            }
+            room.prices
+                .quote(check_in_day, check_out_day, 0, 0, zero_adjustment)
+                .map_err(QueryError::Pricing)?;
+            grouped
+                .entry(room.property_id)
+                .or_default()
+                .push(PricedRoomOffer {
+                    room_id: room.room_id,
+                    prices: room.prices.clone(),
+                    occupancy_adjustment: room.occupancy_adjustment,
+                    floor: self
+                        .spatial
+                        .as_ref()
+                        .and_then(|projection| projection.placement(room.room_id))
+                        .map_or(0, |placement| placement.floor),
+                    building: self
+                        .spatial
+                        .as_ref()
+                        .and_then(|projection| projection.placement(room.room_id))
+                        .map_or(0, |placement| placement.building),
+                    adult_age: room.adult_age,
+                    occupancy_rule: room.occupancy_rule.clone(),
+                });
+        }
+        Ok(grouped)
+    }
+
+    fn validate_multi_room_spatial_semantics(
+        &self,
+        query: &MultiRoomStayQuery<'_>,
+    ) -> Result<(), QueryError> {
+        if self.spatial.is_some() {
+            return Ok(());
+        }
+        for intent in query.party.rooming_intents() {
+            if !matches!(
+                intent.relation,
+                RoomingRelation::SameRoom | RoomingRelation::SeparateRoom
+            ) {
+                return Err(QueryError::MissingRoomTopology(intent.relation));
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -183,6 +385,77 @@ impl StayQuery<'_> {
     fn check_out_day_i32(&self) -> Result<i32, QueryError> {
         i32::try_from(self.check_out_day).map_err(|_| QueryError::ServiceDayOutOfRange)
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct MultiRoomStayQuery<'a> {
+    pub destination_id: u32,
+    pub check_in_day: u32,
+    pub check_out_day: u32,
+    pub check_in_date: CivilDate,
+    pub party: &'a BookingParty,
+    pub budget: Option<MoneyMicros>,
+    pub profile: SolutionProfile,
+    pub solver: SolverConfig,
+    pub limit: usize,
+}
+
+impl MultiRoomStayQuery<'_> {
+    fn check_in_day_i32(&self) -> Result<i32, QueryError> {
+        i32::try_from(self.check_in_day).map_err(|_| QueryError::ServiceDayOutOfRange)
+    }
+
+    fn check_out_day_i32(&self) -> Result<i32, QueryError> {
+        i32::try_from(self.check_out_day).map_err(|_| QueryError::ServiceDayOutOfRange)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MultiRoomSearchHit {
+    pub property_id: u32,
+    pub rooms: Vec<RoomAllocation>,
+    pub projected_price: MoneyMicros,
+    pub soft_penalty: u32,
+    pub profile: SolutionProfile,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MultiRoomQueryExplain {
+    pub initial_room_count: usize,
+    pub available_candidates: usize,
+    pub destination_candidates: usize,
+    pub restriction_candidates: usize,
+    pub properties_considered: usize,
+    pub properties_solved: usize,
+    pub infeasible_properties: usize,
+    pub budget_rejected_properties: usize,
+    pub solver_states_explored: usize,
+    pub valid_solutions_seen: usize,
+    pub returned: usize,
+}
+
+impl MultiRoomQueryExplain {
+    const fn new(initial_room_count: usize, available_candidates: usize) -> Self {
+        Self {
+            initial_room_count,
+            available_candidates,
+            destination_candidates: 0,
+            restriction_candidates: 0,
+            properties_considered: 0,
+            properties_solved: 0,
+            infeasible_properties: 0,
+            budget_rejected_properties: 0,
+            solver_states_explored: 0,
+            valid_solutions_seen: 0,
+            returned: 0,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MultiRoomSearchResult {
+    pub hits: Vec<MultiRoomSearchHit>,
+    pub explain: MultiRoomQueryExplain,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -230,6 +503,124 @@ fn validate_query(query: &StayQuery<'_>) -> Result<(), QueryError> {
     Ok(())
 }
 
+fn solve_multi_room_properties(
+    query: &MultiRoomStayQuery<'_>,
+    check_in_day: i32,
+    check_out_day: i32,
+    grouped: BTreeMap<u32, Vec<PricedRoomOffer>>,
+    topology: Option<&RoomRelationIndex>,
+    explain: &mut MultiRoomQueryExplain,
+) -> Result<Vec<MultiRoomSearchHit>, QueryError> {
+    let mut hits = Vec::new();
+    for (property_id, offers) in grouped {
+        explain.properties_considered += 1;
+        if offers.len() > HARD_MAX_ROOMS {
+            return Err(QueryError::SolverRoomLimit {
+                property_id,
+                rooms: offers.len(),
+            });
+        }
+        let solved = match topology {
+            Some(index) => solve_priced_with_topology(
+                query.party,
+                query.check_in_date,
+                check_in_day,
+                check_out_day,
+                &offers,
+                index,
+                query.solver,
+            ),
+            None => solve_priced(
+                query.party,
+                query.check_in_date,
+                check_in_day,
+                check_out_day,
+                &offers,
+                query.solver,
+            ),
+        }
+        .map_err(QueryError::Solver)?;
+        explain.solver_states_explored = explain
+            .solver_states_explored
+            .checked_add(solved.explored_states)
+            .ok_or(QueryError::ExplainOverflow)?;
+        explain.valid_solutions_seen = explain
+            .valid_solutions_seen
+            .checked_add(solved.valid_solution_count)
+            .ok_or(QueryError::ExplainOverflow)?;
+        if solved.valid_solution_count == 0 {
+            explain.infeasible_properties += 1;
+            continue;
+        }
+        let tagged = solved
+            .solutions
+            .iter()
+            .find(|candidate| candidate.profile == query.profile)
+            .ok_or(QueryError::SolverProfileMissing(query.profile))?;
+        explain.properties_solved += 1;
+        if query
+            .budget
+            .is_some_and(|budget| tagged.solution.total_price > budget)
+        {
+            explain.budget_rejected_properties += 1;
+            continue;
+        }
+        hits.push(MultiRoomSearchHit {
+            property_id,
+            rooms: tagged.solution.rooms.clone(),
+            projected_price: tagged.solution.total_price,
+            soft_penalty: tagged.solution.soft_penalty,
+            profile: tagged.profile,
+        });
+    }
+    Ok(hits)
+}
+
+fn validate_multi_room_query(query: &MultiRoomStayQuery<'_>) -> Result<(), QueryError> {
+    if query.limit == 0 || query.limit > MAX_TOP_K {
+        return Err(QueryError::InvalidLimit(query.limit));
+    }
+    if query.check_out_day <= query.check_in_day {
+        return Err(QueryError::InvalidStayRange);
+    }
+    if query.budget.is_some_and(|budget| budget.get() < 0) {
+        return Err(QueryError::NegativeBudget);
+    }
+    let party_size = query.party.travelers().len();
+    if party_size == 0 || party_size > HARD_MAX_TRAVELERS {
+        return Err(QueryError::SolverPartyTooLarge(party_size));
+    }
+    Ok(())
+}
+
+fn compare_multi_room_hits(
+    left: &MultiRoomSearchHit,
+    right: &MultiRoomSearchHit,
+    profile: SolutionProfile,
+) -> Ordering {
+    let profile_order = match profile {
+        SolutionProfile::Cheapest => left
+            .projected_price
+            .cmp(&right.projected_price)
+            .then_with(|| left.rooms.len().cmp(&right.rooms.len()))
+            .then_with(|| left.soft_penalty.cmp(&right.soft_penalty)),
+        SolutionProfile::FewestRooms => left
+            .rooms
+            .len()
+            .cmp(&right.rooms.len())
+            .then_with(|| left.projected_price.cmp(&right.projected_price))
+            .then_with(|| left.soft_penalty.cmp(&right.soft_penalty)),
+        SolutionProfile::BestFamilyLayout => left
+            .soft_penalty
+            .cmp(&right.soft_penalty)
+            .then_with(|| left.projected_price.cmp(&right.projected_price))
+            .then_with(|| left.rooms.len().cmp(&right.rooms.len())),
+    };
+    profile_order
+        .then_with(|| left.property_id.cmp(&right.property_id))
+        .then_with(|| left.rooms.cmp(&right.rooms))
+}
+
 fn is_restriction_rejection(error: RestrictionError) -> bool {
     matches!(
         error,
@@ -263,6 +654,9 @@ pub enum QueryError {
     CatalogInvariant,
     RoomDocumentCountMismatch { expected: usize, actual: usize },
     NonDenseRoomId { expected: u32, actual: u32 },
+    SpatialNonDenseRoomId { expected: u32, actual: u32 },
+    SpatialRoomCountMismatch { expected: usize, actual: usize },
+    Topology(TopologyError),
     InvalidAdultAge(u32),
     MissingRoomProjection(u32),
     InvalidLimit(usize),
@@ -275,6 +669,12 @@ pub enum QueryError {
     Occupancy(OccupancyError),
     Pricing(PricingError),
     Ranking(RankingError),
+    SolverPartyTooLarge(usize),
+    SolverRoomLimit { property_id: u32, rooms: usize },
+    MissingRoomTopology(RoomingRelation),
+    Solver(SolverError),
+    SolverProfileMissing(SolutionProfile),
+    ExplainOverflow,
 }
 
 impl fmt::Display for QueryError {

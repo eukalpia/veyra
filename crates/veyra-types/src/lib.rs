@@ -68,11 +68,28 @@ impl GenerationId {
 ///
 /// `published <= applied <= durable <= received`
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(try_from = "ProjectionProgressWire")]
 pub struct ProjectionProgress {
     received: LogSequenceNumber,
     durable: LogSequenceNumber,
     applied: LogSequenceNumber,
     published: LogSequenceNumber,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+struct ProjectionProgressWire {
+    received: LogSequenceNumber,
+    durable: LogSequenceNumber,
+    applied: LogSequenceNumber,
+    published: LogSequenceNumber,
+}
+
+impl TryFrom<ProjectionProgressWire> for ProjectionProgress {
+    type Error = ProjectionProgressError;
+
+    fn try_from(raw: ProjectionProgressWire) -> Result<Self, Self::Error> {
+        Self::try_new(raw.received, raw.durable, raw.applied, raw.published)
+    }
 }
 
 impl ProjectionProgress {

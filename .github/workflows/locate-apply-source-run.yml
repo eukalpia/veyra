@@ -1,0 +1,44 @@
+name: Locate source-hardening run
+
+on:
+  push:
+    branches:
+      - agent/v1-production-completion
+    paths:
+      - .github/workflows/locate-apply-source-run.yml
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  locate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/v1-production-completion
+      - name: Record latest source-hardening run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          for attempt in $(seq 1 60); do
+            row=$(gh api \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/apply-coverage-portability-source.yml/runs?branch=agent%2Fv1-production-completion&per_page=1" \
+              --jq '.workflow_runs[0] | [.id, .status, (.conclusion // "pending"), .head_sha] | @tsv')
+            if [ -n "$row" ]; then
+              printf '%s\n' "$row" > docs/.apply-source-run
+              break
+            fi
+            sleep 2
+          done
+          test -s docs/.apply-source-run
+      - name: Commit locator
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/.apply-source-run
+          git commit -m "ci: record source-hardening run 3"
+          git push origin HEAD:agent/v1-production-completion

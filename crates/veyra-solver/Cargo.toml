@@ -14,6 +14,7 @@ veyra-pricing = { version = "0.1.0", path = "../veyra-pricing" }
 veyra-rule-compiler = { version = "0.1.0", path = "../veyra-rule-compiler" }
 
 [dev-dependencies]
+proptest.workspace = true
 veyra-rules = { version = "0.1.0", path = "../veyra-rules" }
 
 [lints]

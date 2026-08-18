@@ -1,0 +1,112 @@
+LLVM SEGMENT REGION DIAGNOSTIC
+
+Filename                            Regions    Missed Regions     Cover   Functions  Missed Functions  Executed       Lines      Missed Lines     Cover    Branches   Missed Branches     Cover
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+veyra-availability/src/lib.rs           214                 3    98.60%          21                 0   100.00%         162                 0   100.00%           0                 0         -
+veyra-cdc/src/checkpoint.rs             253                 7    97.23%          16                 0   100.00%         163                 1    99.39%           0                 0         -
+veyra-cdc/src/journal_v2.rs             541                10    98.15%          28                 0   100.00%         282                 0   100.00%           0                 0         -
+veyra-cdc/src/live.rs                   254                11    95.67%          19                 0   100.00%         206                 5    97.57%           0                 0         -
+veyra-cdc/src/pgoutput_v1.rs            444                 1    99.77%          27                 0   100.00%         232                 0   100.00%           0                 0         -
+veyra-cdc/src/processor.rs              158                 5    96.84%          12                 0   100.00%         123                 3    97.56%           0                 0         -
+veyra-cdc/src/stream.rs                  95                 2    97.89%           9                 0   100.00%          69                 1    98.55%           0                 0         -
+veyra-cdc/src/transaction_v1.rs         177                 0   100.00%          19                 0   100.00%         151                 0   100.00%           0                 0         -
+veyra-occupancy/src/lib.rs              110                 3    97.27%           6                 0   100.00%          85                 0   100.00%           0                 0         -
+veyra-party/src/lib.rs                  292                 5    98.29%          37                 0   100.00%         218                 1    99.54%           0                 0         -
+veyra-pricing/src/lib.rs                133                 1    99.25%          10                 0   100.00%          99                 0   100.00%           0                 0         -
+veyra-query/src/lib.rs                  517                10    98.07%          30                 0   100.00%         457                 4    99.12%           0                 0         -
+veyra-ranking/src/lib.rs                113                 1    99.12%          10                 0   100.00%          96                 1    98.96%           0                 0         -
+veyra-restrictions/src/lib.rs           106                 3    97.17%           7                 0   100.00%          87                 0   100.00%           0                 0         -
+veyra-rule-compiler/src/lib.rs          203                 0   100.00%          11                 0   100.00%         153                 0   100.00%           0                 0         -
+veyra-rules/src/lib.rs                  152                 1    99.34%          13                 0   100.00%          94                 0   100.00%           0                 0         -
+veyra-runtime/src/lib.rs                131                 0   100.00%          24                 0   100.00%         147                 0   100.00%           0                 0         -
+veyra-segment/src/lib.rs                315                 8    97.46%          18                 0   100.00%         203                 2    99.01%           0                 0         -
+veyra-server/src/lib.rs                 109                 1    99.08%          15                 0   100.00%          86                 0   100.00%           0                 0         -
+veyra-solver/src/lib.rs                 529                19    96.41%          40                 0   100.00%         429                 2    99.53%           0                 0         -
+veyra-solver/src/topology.rs             61                 0   100.00%           4                 0   100.00%          47                 0   100.00%           0                 0         -
+veyra-storage/src/lib.rs                 80                 2    97.50%          10                 0   100.00%          79                 2    97.47%           0                 0         -
+veyra-types/src/lib.rs                   63                 0   100.00%          13                 0   100.00%          66                 0   100.00%           0                 0         -
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+TOTAL                                  5050                93    98.16%         399                 0   100.00%        3734                22    99.41%           0                 0         -
+
+
+summary_total_regions=5050
+summary_missing_regions=93
+segment_region_entries=4979
+segment_zero_count_entries=63
+segment_count_matches_summary=False
+segment_missing_matches_summary=False
+
+crates/veyra-availability/src/lib.rs
+  185:61 | let _ = self.available_for_stay(check_in, check_out)?;
+  190:56 | if !self.available_on_day(day, room_id)? {
+  217:42 | let offset = self.day_offset(day)?;
+crates/veyra-cdc/src/checkpoint.rs
+  106:84 | let mut reader = OpenOptions::new().read(true).write(true).open(&self.path)?;
+  107:41 | let file_len = reader.metadata()?.len();
+  111:41 | reader.set_len(complete_len)?;
+  112:31 | reader.sync_data()?;
+  119:43 | reader.read_exact(&mut record)?;
+crates/veyra-cdc/src/journal_v2.rs
+  118:38 | self.file.write_all(&payload)?;
+  119:61 | self.file.write_all(&crc32c(&payload).to_le_bytes())?;
+  141:32 | reader.set_len(len)?;
+  142:31 | reader.sync_data()?;
+  146:37 | if guard.observe(record)? != ReplayDecision::Apply {
+  160:35 | let file_len = file.metadata()?.len();
+  173:37 | file.read_exact(&mut header)?;
+  197:38 | file.read_exact(&mut payload)?;
+  199:34 | file.read_exact(&mut crc)?;
+crates/veyra-cdc/src/processor.rs
+  112:29 | self.ensure_usable()?;
+  126:29 | self.ensure_usable()?;
+crates/veyra-occupancy/src/lib.rs
+  69:91 | let context = OccupancyContext::new(occupants).map_err(OccupancyError::InvalidContext)?;
+  72:47 | .map_err(OccupancyError::CompiledRule)?
+crates/veyra-party/src/lib.rs
+  114:14 | _ => 0,
+  307:40 | self.require_traveler(traveler)?;
+  337:54 | self.validate_pair(intent.left, intent.right)?;
+  370:36 | self.require_traveler(left)?;
+crates/veyra-pricing/src/lib.rs
+  132:94 | let start = usize::try_from(start_i64).map_err(|_| PricingError::OutsidePriceHorizon)?;
+crates/veyra-query/src/lib.rs
+  206:21 | Err(error) => return Err(QueryError::Restrictions(error)),
+  206:38 | Err(error) => return Err(QueryError::Restrictions(error)),
+  274:47 | .map_err(QueryError::Availability)?;
+  321:21 | Err(error) => return Err(QueryError::Restrictions(error)),
+  321:38 | Err(error) => return Err(QueryError::Restrictions(error)),
+  506:16 | return Err(QueryError::PartyTooLarge(party_size));
+  551:48 | .ok_or(QueryError::ExplainOverflow)?;
+  555:48 | .ok_or(QueryError::ExplainOverflow)?;
+  564:68 | .ok_or(QueryError::SolverProfileMissing(query.profile))?;
+  654:5 | matches!(
+crates/veyra-segment/src/lib.rs
+  75:20 | return Err(SegmentError::PayloadTooLarge(payload.len()));
+  196:37 | file.write_all(&encoded)?;
+  197:28 | file.sync_all()?;
+  200:30 | sync_parent(path)?;
+  211:39 | let metadata = file.metadata()?;
+  238:16 | return Ok(());
+  242:27 | File::open(parent)?.sync_all()?;
+  242:39 | File::open(parent)?.sync_all()?;
+crates/veyra-server/src/lib.rs
+  52:53 | .map_err(ServiceQueryError::CannotProve)?;
+crates/veyra-solver/src/lib.rs
+  378:50 | if partial_hard_constraints_hold(context)? {
+  387:46 | if !layout_hard_constraints_hold(context)? {
+  388:16 | return Ok(());
+  414:52 | let room_price = offer.price_for(occupancy)?;
+  426:52 | let soft_penalty = layout_soft_penalty(context)?;
+  442:55 | let left = assignment_of(context, intent.left)?;
+  443:57 | let right = assignment_of(context, intent.right)?;
+  444:78 | let valid = relation_satisfied(context, left, right, intent.relation)?;
+  463:62 | .ok_or(SolverError::UnknownTraveler(intent.left))?;
+  468:63 | .ok_or(SolverError::UnknownTraveler(intent.right))?;
+  470:13 | continue;
+  475:78 | let valid = relation_satisfied(context, left, right, intent.relation)?;
+  504:26 | && topology()?.contains(
+  510:26 | && topology()?.contains(
+  526:55 | let left = assignment_of(context, intent.left)?;
+  527:57 | let right = assignment_of(context, intent.right)?;
+  528:82 | let satisfied = relation_satisfied(context, left, right, intent.relation)?;
+  535:81 | penalty = penalty.checked_add(1).ok_or(SolverError::PenaltyOverflow)?;

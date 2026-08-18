@@ -1,0 +1,244 @@
+Final hardening v2 failed on source SHA: 6f45221541263005bfa2e2175db7a87df930faed
+exit_code: 1
+
+Last verification output:
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/error_surface_matrix.rs (target/llvm-cov-target/debug/build/veyra-segment/380b4f3c34ebb133/out/error_surface_matrix-380b4f3c34ebb133)
+
+running 3 tests
+test every_semantic_error_variant_has_a_stable_non_io_surface ... ok
+test missing_file_name_and_missing_file_fail_through_typed_boundaries ... ok
+test io_conversion_display_and_source_preserve_the_original_error ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/io_failure_coverage.rs (target/llvm-cov-target/debug/build/veyra-segment/d061287cd0ec0941/out/io_failure_coverage-d061287cd0ec0941)
+
+running 3 tests
+test reading_a_directory_is_a_typed_io_failure ... ok
+test preexisting_temporary_file_fails_without_leaving_stale_state ... ok
+test rename_failure_removes_the_new_temporary_segment ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/llvm-cov-target/debug/build/veyra-server/a0306d1a52c01470/out/veyra_server-a0306d1a52c01470)
+
+running 8 tests
+test tests::bind_address_defaults_and_validates_explicit_values ... ok
+test tests::health_response_exposes_generation_and_lsn ... ok
+test tests::readiness_fails_closed_before_projection_publish ... ok
+test tests::readiness_is_ok_only_for_ready_snapshot ... ok
+test tests::readiness_rejects_degraded_snapshot ... ok
+test tests::liveness_is_ok_even_while_starting ... ok
+test tests::router_routes_liveness_request ... ok
+test tests::serve_completes_cleanly_after_shutdown_signal ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/llvm-cov-target/debug/build/veyra-server/e01b7663b83359bc/out/veyra_server-e01b7663b83359bc)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/query_boundary.rs (target/llvm-cov-target/debug/build/veyra-server/d018047aa0d0cf86/out/query_boundary-d018047aa0d0cf86)
+
+running 2 tests
+test query_service_fails_closed_before_query_generation_is_ready ... ok
+test service_query_error_codes_are_stable_for_admission_failures ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/query_success_matrix.rs (target/llvm-cov-target/debug/build/veyra-server/3e824b70495b7620/out/query_success_matrix-3e824b70495b7620)
+
+running 2 tests
+test admitted_query_rejections_keep_stable_machine_and_display_surfaces ... ok
+test query_service_executes_single_and_multi_room_success_paths ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/llvm-cov-target/debug/build/veyra-solver/251ddad57d4ccae2/out/veyra_solver-251ddad57d4ccae2)
+
+running 8 tests
+test private_region_coverage::hard_constraint_and_assignment_truth_table ... ok
+test private_region_coverage::leaf_paths_cover_rejection_unused_rooms_and_overflow ... ok
+test private_region_coverage::soft_penalty_prefer_and_avoid_truth_table ... ok
+test tests::exhausted_budget_returns_no_unproven_optimum ... ok
+test tests::exact_solver_preserves_guardian_and_must_same_room ... ok
+test tests::invalid_input_bounds_are_explicit ... ok
+test tests::soft_preference_changes_family_profile_not_validity ... ok
+test tests::unsupported_topology_fails_closed ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/coverage.rs (target/llvm-cov-target/debug/build/veyra-solver/9badf0ed604109fe/out/coverage-9badf0ed604109fe)
+
+running 4 tests
+test all_solver_errors_have_stable_display_surface ... ok
+test checked_money_overflow_propagates_from_solution_cost ... ok
+test input_bounds_fail_closed ... ok
+test search_budget_solution_limit_and_semantic_unknowns_fail_closed ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/edge_matrix.rs (target/llvm-cov-target/debug/build/veyra-solver/78055dcc6c4266c1/out/edge_matrix-78055dcc6c4266c1)
+
+running 3 tests
+test priced_entry_points_reject_invalid_stays_before_search ... ok
+test topology_must_cover_every_offered_room ... ok
+test every_spatial_relation_executes_true_and_false_paths ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/layout_coverage.rs (target/llvm-cov-target/debug/build/veyra-solver/e57150c7b35be010/out/layout_coverage-e57150c7b35be010)
+
+running 4 tests
+test hard_same_floor_and_same_building_constraints_are_proven ... ok
+test no_valid_rooming_returns_a_proven_empty_result ... ok
+test every_unsupported_soft_topology_fails_closed ... ok
+test every_supported_soft_relation_executes_prefer_and_avoid_semantics ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/priced_solver.rs (target/llvm-cov-target/debug/build/veyra-solver/b94e57230b8388ac/out/priced_solver-b94e57230b8388ac)
+
+running 1 test
+test cheapest_allocation_uses_actual_room_occupancy_for_pricing ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/pruning.rs (target/llvm-cov-target/debug/build/veyra-solver/bf57bd8721330ee9/out/pruning-bf57bd8721330ee9)
+
+running 1 test
+test hard_same_room_constraint_prunes_impossible_partial_assignments ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/pruning_differential.rs (target/llvm-cov-target/debug/build/veyra-solver/c9c5cb22b0483fea/out/pruning_differential-c9c5cb22b0483fea)
+
+running 1 test
+test pruned_solver_matches_exhaustive_reference ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/topology.rs (target/llvm-cov-target/debug/build/veyra-solver/3a7407b218429589/out/topology-3a7407b218429589)
+
+running 4 tests
+test complete_topology_with_no_edge_proves_relation_false ... ok
+test explicit_connected_edge_makes_connected_rooms_constraint_provable ... ok
+test near_is_satisfied_by_same_room_without_inventing_an_edge ... ok
+test topology_constructor_rejects_unknown_self_and_duplicate_edges ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/topology_coverage.rs (target/llvm-cov-target/debug/build/veyra-solver/3d4f30a6ccf1ab34/out/topology_coverage-3d4f30a6ccf1ab34)
+
+running 1 test
+test topology_index_normalizes_and_exposes_every_boundary ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/llvm-cov-target/debug/build/veyra-storage/db0c74fa7fc6bc78/out/veyra_storage-db0c74fa7fc6bc78)
+
+running 4 tests
+test tests::generation_rejects_mismatched_and_duplicate_segments ... ok
+test tests::generation_validates_segment_identity_and_ranges ... ok
+test tests::publication_keeps_old_readers_alive ... ok
+test tests::publication_rejects_generation_and_lsn_regression ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/coverage.rs (target/llvm-cov-target/debug/build/veyra-storage/20d17ecf1a0e4bab/out/coverage-20d17ecf1a0e4bab)
+
+running 2 tests
+test every_storage_error_has_stable_display ... ok
+test store_debug_and_atomic_replacement_are_observable ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/llvm-cov-target/debug/build/veyra-types/96b644ef7b773ade/out/veyra_types-96b644ef7b773ade)
+
+running 10 tests
+test tests::compatibility_versions_are_explicit ... ok
+test tests::generation_round_trips ... ok
+test tests::progress_error_messages_are_stable ... ok
+test tests::lsn_round_trips_and_computes_distance ... ok
+test tests::progress_getters_and_zero_are_exact ... ok
+test tests::projection_progress_accepts_monotonic_lsn_chain ... ok
+test tests::projection_progress_rejects_applied_ahead_of_durable ... ok
+test tests::projection_progress_rejects_durable_ahead_of_received ... ok
+test tests::projection_progress_rejects_published_ahead_of_applied ... ok
+test tests::any_ordered_chain_is_accepted ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/serde_invariants.rs (target/llvm-cov-target/debug/build/veyra-types/e689e31b3d745520/out/serde_invariants-e689e31b3d745520)
+
+running 4 tests
+test serde_accepts_an_ordered_progress_chain ... ok
+test serde_rejects_applied_progress_ahead_of_durable ... ok
+test serde_rejects_durable_progress_ahead_of_received ... ok
+test serde_rejects_published_progress_ahead_of_applied ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+Filename                            Regions    Missed Regions     Cover   Functions  Missed Functions  Executed       Lines      Missed Lines     Cover    Branches   Missed Branches     Cover
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+veyra-availability/src/lib.rs           214                 3    98.60%          21                 0   100.00%         162                 0   100.00%           0                 0         -
+veyra-cdc/src/checkpoint.rs             253                 7    97.23%          16                 0   100.00%         163                 1    99.39%           0                 0         -
+veyra-cdc/src/journal_v2.rs             541                10    98.15%          28                 0   100.00%         282                 0   100.00%           0                 0         -
+veyra-cdc/src/live.rs                   254                11    95.67%          19                 0   100.00%         206                 5    97.57%           0                 0         -
+veyra-cdc/src/pgoutput_v1.rs            444                 1    99.77%          27                 0   100.00%         232                 0   100.00%           0                 0         -
+veyra-cdc/src/processor.rs              158                 5    96.84%          12                 0   100.00%         123                 3    97.56%           0                 0         -
+veyra-cdc/src/stream.rs                  95                 2    97.89%           9                 0   100.00%          69                 1    98.55%           0                 0         -
+veyra-cdc/src/transaction_v1.rs         177                 0   100.00%          19                 0   100.00%         151                 0   100.00%           0                 0         -
+veyra-occupancy/src/lib.rs              110                 3    97.27%           6                 0   100.00%          85                 0   100.00%           0                 0         -
+veyra-party/src/lib.rs                  292                 5    98.29%          37                 0   100.00%         218                 1    99.54%           0                 0         -
+veyra-pricing/src/lib.rs                133                 1    99.25%          10                 0   100.00%          99                 0   100.00%           0                 0         -
+veyra-query/src/lib.rs                  517                10    98.07%          30                 0   100.00%         457                 4    99.12%           0                 0         -
+veyra-ranking/src/lib.rs                113                 1    99.12%          10                 0   100.00%          96                 1    98.96%           0                 0         -
+veyra-restrictions/src/lib.rs           106                 3    97.17%           7                 0   100.00%          87                 0   100.00%           0                 0         -
+veyra-rule-compiler/src/lib.rs          203                 0   100.00%          11                 0   100.00%         153                 0   100.00%           0                 0         -
+veyra-rules/src/lib.rs                  152                 1    99.34%          13                 0   100.00%          94                 0   100.00%           0                 0         -
+veyra-runtime/src/lib.rs                131                 0   100.00%          24                 0   100.00%         147                 0   100.00%           0                 0         -
+veyra-segment/src/lib.rs                315                 8    97.46%          18                 0   100.00%         203                 2    99.01%           0                 0         -
+veyra-server/src/lib.rs                 109                 1    99.08%          15                 0   100.00%          86                 0   100.00%           0                 0         -
+veyra-solver/src/lib.rs                 529                19    96.41%          40                 0   100.00%         429                 2    99.53%           0                 0         -
+veyra-solver/src/topology.rs             61                 0   100.00%           4                 0   100.00%          47                 0   100.00%           0                 0         -
+veyra-storage/src/lib.rs                 80                 2    97.50%          10                 0   100.00%          79                 2    97.47%           0                 0         -
+veyra-types/src/lib.rs                   63                 0   100.00%          13                 0   100.00%          66                 0   100.00%           0                 0         -
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+TOTAL                                  5050                93    98.16%         399                 0   100.00%        3734                22    99.41%           0                 0         -
+Uncovered Lines:
+/tmp/tmp.Q5qHjpfHjt/crates/veyra-party/src/lib.rs: 114
+/tmp/tmp.Q5qHjpfHjt/crates/veyra-query/src/lib.rs: 206, 321, 506, 654
+/tmp/tmp.Q5qHjpfHjt/crates/veyra-segment/src/lib.rs: 75, 238
+/tmp/tmp.Q5qHjpfHjt/crates/veyra-solver/src/lib.rs: 388, 470
+Filename                            Regions    Missed Regions     Cover   Functions  Missed Functions  Executed       Lines      Missed Lines     Cover    Branches   Missed Branches     Cover
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+veyra-availability/src/lib.rs           214                 3    98.60%          21                 0   100.00%         162                 0   100.00%           0                 0         -
+veyra-cdc/src/checkpoint.rs             253                 7    97.23%          16                 0   100.00%         163                 1    99.39%           0                 0         -
+veyra-cdc/src/journal_v2.rs             541                10    98.15%          28                 0   100.00%         282                 0   100.00%           0                 0         -
+veyra-cdc/src/live.rs                   254                11    95.67%          19                 0   100.00%         206                 5    97.57%           0                 0         -
+veyra-cdc/src/pgoutput_v1.rs            444                 1    99.77%          27                 0   100.00%         232                 0   100.00%           0                 0         -
+veyra-cdc/src/processor.rs              158                 5    96.84%          12                 0   100.00%         123                 3    97.56%           0                 0         -
+veyra-cdc/src/stream.rs                  95                 2    97.89%           9                 0   100.00%          69                 1    98.55%           0                 0         -
+veyra-cdc/src/transaction_v1.rs         177                 0   100.00%          19                 0   100.00%         151                 0   100.00%           0                 0         -
+veyra-occupancy/src/lib.rs              110                 3    97.27%           6                 0   100.00%          85                 0   100.00%           0                 0         -
+veyra-party/src/lib.rs                  292                 5    98.29%          37                 0   100.00%         218                 1    99.54%           0                 0         -
+veyra-pricing/src/lib.rs                133                 1    99.25%          10                 0   100.00%          99                 0   100.00%           0                 0         -
+veyra-query/src/lib.rs                  517                10    98.07%          30                 0   100.00%         457                 4    99.12%           0                 0         -
+veyra-ranking/src/lib.rs                113                 1    99.12%          10                 0   100.00%          96                 1    98.96%           0                 0         -
+veyra-restrictions/src/lib.rs           106                 3    97.17%           7                 0   100.00%          87                 0   100.00%           0                 0         -
+veyra-rule-compiler/src/lib.rs          203                 0   100.00%          11                 0   100.00%         153                 0   100.00%           0                 0         -
+veyra-rules/src/lib.rs                  152                 1    99.34%          13                 0   100.00%          94                 0   100.00%           0                 0         -
+veyra-runtime/src/lib.rs                131                 0   100.00%          24                 0   100.00%         147                 0   100.00%           0                 0         -
+veyra-segment/src/lib.rs                315                 8    97.46%          18                 0   100.00%         203                 2    99.01%           0                 0         -
+veyra-server/src/lib.rs                 109                 1    99.08%          15                 0   100.00%          86                 0   100.00%           0                 0         -
+veyra-solver/src/lib.rs                 529                19    96.41%          40                 0   100.00%         429                 2    99.53%           0                 0         -
+veyra-solver/src/topology.rs             61                 0   100.00%           4                 0   100.00%          47                 0   100.00%           0                 0         -
+veyra-storage/src/lib.rs                 80                 2    97.50%          10                 0   100.00%          79                 2    97.47%           0                 0         -
+veyra-types/src/lib.rs                   63                 0   100.00%          13                 0   100.00%          66                 0   100.00%           0                 0         -
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+TOTAL                                  5050                93    98.16%         399                 0   100.00%        3734                22    99.41%           0                 0         -
