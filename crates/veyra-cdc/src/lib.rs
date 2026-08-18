@@ -6,6 +6,7 @@
 //! crash-safe durable transaction replay, and the journal-before-apply acknowledgement boundary.
 //! It deliberately does not own booking mutations or query projections.
 
+mod bootstrap;
 mod checkpoint;
 #[path = "journal_v2.rs"]
 mod journal;
@@ -17,6 +18,10 @@ mod stream;
 #[path = "transaction_v1.rs"]
 mod transaction;
 
+pub use bootstrap::{
+    BootstrapError, BootstrapPhase, BootstrapProgress, BootstrapState, SnapshotAppend,
+    SnapshotCompletion, SnapshotDescriptor, SnapshotRow, SnapshotSink,
+};
 pub use checkpoint::{AppliedCheckpoint, AppliedState, CheckpointAdvance, CheckpointError};
 pub use journal::{Journal, JournalError, ReplayDecision, ReplayGuard};
 pub use live::{

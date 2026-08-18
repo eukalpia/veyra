@@ -1,0 +1,61 @@
+name: PostgreSQL logical replication
+
+on:
+  pull_request:
+    branches:
+      - agent/v1-production-completion
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-logical-replication:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install pinned Rust
+        run: rustup toolchain install 1.97.1 --profile minimal
+      - name: Start PostgreSQL 17 with logical WAL
+        shell: bash
+        run: |
+          docker run -d --name veyra-postgres \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=postgres \
+            -p 55432:5432 \
+            postgres:17-alpine \
+            postgres \
+              -c wal_level=logical \
+              -c max_replication_slots=10 \
+              -c max_wal_senders=10 \
+              -c wal_keep_size=256MB
+          for attempt in $(seq 1 60); do
+            if docker exec veyra-postgres pg_isready -U postgres -d postgres; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs veyra-postgres
+          exit 1
+      - name: Create publication, slot, and committed transaction
+        shell: bash
+        run: |
+          docker exec veyra-postgres psql -v ON_ERROR_STOP=1 -U postgres -d postgres -c \
+            "CREATE TABLE inventory(id integer PRIMARY KEY, value text NOT NULL);"
+          docker exec veyra-postgres psql -v ON_ERROR_STOP=1 -U postgres -d postgres -c \
+            "CREATE PUBLICATION veyra_pub FOR TABLE inventory;"
+          docker exec veyra-postgres psql -v ON_ERROR_STOP=1 -U postgres -d postgres -Atc \
+            "SELECT * FROM pg_create_logical_replication_slot('veyra_slot','pgoutput');"
+          docker exec veyra-postgres psql -v ON_ERROR_STOP=1 -U postgres -d postgres -c \
+            "INSERT INTO inventory(id, value) VALUES (1, 'from-real-postgres');"
+          stop_lsn=$(docker exec veyra-postgres psql -v ON_ERROR_STOP=1 -U postgres -d postgres -Atc \
+            "SELECT pg_current_wal_lsn()::text;")
+          test -n "$stop_lsn"
+          echo "VEYRA_POSTGRES_PORT=55432" >> "$GITHUB_ENV"
+          echo "VEYRA_POSTGRES_STOP_LSN=$stop_lsn" >> "$GITHUB_ENV"
+      - name: Prove journal apply checkpoint acknowledgement ordering
+        shell: bash
+        run: timeout 90s cargo test -p veyra-cdc --test postgres_logical_replication --locked -- --nocapture
+      - name: PostgreSQL diagnostics
+        if: always()
+        run: docker logs veyra-postgres

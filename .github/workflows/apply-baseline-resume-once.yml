@@ -1,0 +1,184 @@
+name: Apply baseline resume once
+
+on:
+  push:
+    branches:
+      - agent/v1-bootstrap-production
+    paths:
+      - .github/workflows/apply-baseline-resume-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/v1-bootstrap-production
+          fetch-depth: 0
+      - run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Apply minimal tested baseline implementation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          bootstrap = Path('crates/veyra-cdc/src/bootstrap.rs')
+          text = bootstrap.read_text()
+          old = '''    CatchupIncomplete {
+              high_water: LogSequenceNumber,
+              applied: LogSequenceNumber,
+          },
+          ValidationMissing,
+          InvalidSnapshotRow,
+          '''
+          new = '''    CatchupIncomplete {
+              high_water: LogSequenceNumber,
+              applied: LogSequenceNumber,
+          },
+          RecoveredBeforeBaseline {
+              baseline: LogSequenceNumber,
+              recovered: LogSequenceNumber,
+          },
+          ValidationMissing,
+          InvalidSnapshotRow,
+          '''
+          if new not in text:
+              if old not in text:
+                  raise SystemExit('BootstrapError insertion point not found')
+              text = text.replace(old, new, 1)
+          bootstrap.write_text(text)
+
+          live = Path('crates/veyra-cdc/src/live.rs')
+          text = live.read_text()
+          old = '''use crate::{
+              AppliedCheckpoint, CheckpointError, DurableTransactionProcessor, JournalError,
+              ProcessingOutcome, ProcessorError, TransactionBatch,
+          };
+          '''
+          new = '''use crate::{
+              AppliedCheckpoint, BootstrapError, CheckpointError, DurableTransactionProcessor,
+              JournalError, ProcessingOutcome, ProcessorError, TransactionBatch,
+          };
+          '''
+          if new not in text:
+              if old not in text:
+                  raise SystemExit('live import insertion point not found')
+              text = text.replace(old, new, 1)
+
+          open_method_end = '''        Ok(Self {
+              processor,
+              checkpoint,
+              state: LiveReplicationState::recovered(resume_lsn),
+              events_seen: 0,
+              acknowledgements: 0,
+          })
+              }
+          '''
+          baseline_method = '''        Ok(Self {
+              processor,
+              checkpoint,
+              state: LiveReplicationState::recovered(resume_lsn),
+              events_seen: 0,
+              acknowledgements: 0,
+          })
+              }
+
+              /// Opens live replication on top of an already-materialized snapshot baseline.
+              ///
+              /// Empty durable state resumes exactly at `baseline_lsn`. Durable WAL recovered after
+              /// a crash may advance beyond that point, but durable state behind the snapshot fails
+              /// closed because replaying from it would invalidate the snapshot/WAL handoff.
+              pub fn open_from_baseline<E>(
+                  journal_path: &Path,
+                  checkpoint_path: &Path,
+                  baseline_lsn: LogSequenceNumber,
+                  apply: &mut dyn FnMut(&TransactionBatch) -> Result<(), E>,
+              ) -> Result<Self, LiveReplicationError<E>> {
+                  if baseline_lsn == LogSequenceNumber::ZERO {
+                      return Err(LiveReplicationError::Bootstrap(
+                          BootstrapError::InvalidSnapshotLsn,
+                      ));
+                  }
+                  let mut processor = DurableTransactionProcessor::open(journal_path)
+                      .map_err(LiveReplicationError::Journal)?;
+                  let mut checkpoint = AppliedCheckpoint::open(checkpoint_path)
+                      .map_err(LiveReplicationError::Checkpoint)?;
+                  let recovered = recover_checkpointed(&mut processor, &mut checkpoint, apply)?;
+                  let resume_lsn = if recovered == LogSequenceNumber::ZERO {
+                      baseline_lsn
+                  } else if recovered < baseline_lsn {
+                      return Err(LiveReplicationError::Bootstrap(
+                          BootstrapError::RecoveredBeforeBaseline {
+                              baseline: baseline_lsn,
+                              recovered,
+                          },
+                      ));
+                  } else {
+                      recovered
+                  };
+                  Ok(Self {
+                      processor,
+                      checkpoint,
+                      state: LiveReplicationState::recovered(resume_lsn),
+                      events_seen: 0,
+                      acknowledgements: 0,
+                  })
+              }
+          '''
+          if 'pub fn open_from_baseline<E>(' not in text:
+              if open_method_end not in text:
+                  raise SystemExit('LiveReplicationDriver::open end not found')
+              text = text.replace(open_method_end, baseline_method, 1)
+
+          enum_old = '''pub enum LiveReplicationError<E> {
+              Journal(JournalError),
+              Checkpoint(CheckpointError),
+              Processor(ProcessorError<CheckpointApplyError<E>>),
+          '''
+          enum_new = '''pub enum LiveReplicationError<E> {
+              Journal(JournalError),
+              Checkpoint(CheckpointError),
+              Bootstrap(BootstrapError),
+              Processor(ProcessorError<CheckpointApplyError<E>>),
+          '''
+          if enum_new not in text:
+              if enum_old not in text:
+                  raise SystemExit('LiveReplicationError enum insertion point not found')
+              text = text.replace(enum_old, enum_new, 1)
+
+          display_old = '''            Self::Journal(error) => write!(formatter, "journal: {error}"),
+              Self::Checkpoint(error) => write!(formatter, "checkpoint: {error}"),
+              Self::Processor(error) => write!(formatter, "processor: {error}"),
+          '''
+          display_new = '''            Self::Journal(error) => write!(formatter, "journal: {error}"),
+              Self::Checkpoint(error) => write!(formatter, "checkpoint: {error}"),
+              Self::Bootstrap(error) => write!(formatter, "bootstrap: {error}"),
+              Self::Processor(error) => write!(formatter, "processor: {error}"),
+          '''
+          if display_new not in text:
+              if display_old not in text:
+                  raise SystemExit('LiveReplicationError display insertion point not found')
+              text = text.replace(display_old, display_new, 1)
+          live.write_text(text)
+          PY
+      - name: Verify GREEN before publication
+        run: |
+          cargo fmt --all
+          cargo fmt --all -- --check
+          cargo clippy -p veyra-cdc --all-targets --all-features --locked -- -D warnings
+          cargo test -p veyra-cdc --test bootstrap_contract --locked
+          cargo test -p veyra-cdc --test bootstrap_live_baseline --locked
+          cargo test -p veyra-cdc --all-features --locked
+      - name: Publish verified implementation and remove helper
+        shell: bash
+        run: |
+          git rm .github/workflows/apply-baseline-resume-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/veyra-cdc/src/bootstrap.rs crates/veyra-cdc/src/live.rs crates/veyra-cdc/tests/bootstrap_live_baseline.rs
+          git diff --cached --check
+          git commit -m "feat: resume live WAL from validated snapshot baseline"
+          git push origin HEAD:agent/v1-bootstrap-production
