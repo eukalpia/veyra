@@ -70,4 +70,28 @@ jobs:
               elif new not in text:
                   raise SystemExit(f'private solver lifetime token not found: {old}')
           solver.write_text(text)
+
+          checkpoint = Path('crates/veyra-cdc/src/checkpoint.rs')
+          text = checkpoint.read_text()
+          replacements = [
+              (
+                  '''        assert_eq!(
+            validate_transition(AppliedState::default(), state(10, 11, 1)),
+            Ok(())
+        );''',
+                  '''        assert!(validate_transition(AppliedState::default(), state(10, 11, 1)).is_ok());''',
+              ),
+              (
+                  '        assert_eq!(validate_transition(current, current), Ok(()));',
+                  '        assert!(validate_transition(current, current).is_ok());',
+              ),
+          ]
+          for old, new in replacements:
+              if old in text:
+                  if text.count(old) != 1:
+                      raise SystemExit('checkpoint success assertion is not unique')
+                  text = text.replace(old, new, 1)
+              elif new not in text:
+                  raise SystemExit('checkpoint success assertion not found')
+          checkpoint.write_text(text)
           PY
