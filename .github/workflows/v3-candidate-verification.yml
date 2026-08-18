@@ -28,7 +28,13 @@ jobs:
         run: |
           python3 tools/final-hardening/apply.py transform
           python3 tools/final-hardening/apply.py tests
-          base64 -d tools/final-hardening/regions_v3.py.gz.b64 | gzip -d > /tmp/regions_v3.py
+          cat \
+            tools/final-hardening/regions_v3.py.gz.b64.part1 \
+            tools/final-hardening/regions_v3.py.gz.b64.part2 \
+            tools/final-hardening/regions_v3.py.gz.b64.part3 \
+            tools/final-hardening/regions_v3.py.gz.b64.part4 \
+            | base64 -d | gzip -d > /tmp/regions_v3.py
+          python3 -m py_compile /tmp/regions_v3.py
           python3 /tmp/regions_v3.py
           python3 - <<'PY'
           from pathlib import Path
