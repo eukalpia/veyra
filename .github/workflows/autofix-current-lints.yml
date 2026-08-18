@@ -1,0 +1,62 @@
+name: Autofix current lints
+
+on:
+  push:
+    branches:
+      - agent/v1-production-completion
+    paths:
+      - .github/workflows/autofix-current-lints.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-current-red
+  cancel-in-progress: false
+
+jobs:
+  autofix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/v1-production-completion
+          fetch-depth: 0
+      - name: Install pinned Rust
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Normalize lockfile and formatting
+        shell: bash
+        run: |
+          cargo generate-lockfile
+          cargo fmt --all
+      - name: Apply machine-safe clippy fixes
+        run: >
+          cargo clippy
+          --fix
+          --workspace
+          --all-targets
+          --all-features
+          --locked
+          --allow-dirty
+          --allow-staged
+          --
+          -D warnings
+      - name: Reformat and verify
+        shell: bash
+        run: |
+          cargo fmt --all
+          cargo fmt --all -- --check
+          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+          cargo test --workspace --all-features --locked
+      - name: Commit only a verified lint repair
+        shell: bash
+        run: |
+          rm -f .github/workflows/repair-current-red.yml
+          rm -f .github/workflows/repair-current-red-v2.yml
+          git rm .github/workflows/autofix-current-lints.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "ci: normalize and verify the current Rust baseline"
+          git push origin HEAD:agent/v1-production-completion
