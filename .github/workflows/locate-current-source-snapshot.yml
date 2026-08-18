@@ -1,0 +1,46 @@
+name: Locate current source snapshot
+
+on:
+  push:
+    branches:
+      - agent/v1-production-completion
+    paths:
+      - .github/workflows/locate-current-source-snapshot.yml
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  locate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/v1-production-completion
+      - name: Wait for and record exact-head snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          for attempt in $(seq 1 60); do
+            row=$(gh api \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/source-snapshot.yml/runs?branch=agent%2Fv1-production-completion&per_page=10" \
+              --jq '.workflow_runs[] | select(.head_sha == env.GITHUB_SHA) | [.id, .status, (.conclusion // "pending"), .head_sha] | @tsv' \
+              | head -n 1)
+            if [ -n "$row" ] && echo "$row" | grep -q $'\tcompleted\tsuccess\t'; then
+              printf '%s\n' "$row" > docs/.current-source-snapshot
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "exact-head source snapshot did not complete" >&2
+          exit 1
+      - name: Commit locator
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/.current-source-snapshot
+          git commit -m "ci: record current source snapshot"
+          git push origin HEAD:agent/v1-production-completion
