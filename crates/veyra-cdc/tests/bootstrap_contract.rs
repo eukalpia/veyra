@@ -1,6 +1,6 @@
 use veyra_cdc::{
-    BootstrapError, BootstrapPhase, BootstrapState, SnapshotAppend, SnapshotDescriptor, SnapshotRow,
-    SnapshotSink,
+    BootstrapError, BootstrapPhase, BootstrapState, SnapshotAppend, SnapshotDescriptor,
+    SnapshotRow, SnapshotSink,
 };
 use veyra_types::{GenerationId, LogSequenceNumber};
 
@@ -34,11 +34,16 @@ fn bootstrap_reaches_ready_only_after_snapshot_replay_and_validation() {
         .begin_validation("snap-1", lsn(120))
         .unwrap_or_else(|_| unreachable!());
     assert_eq!(state.phase(), BootstrapPhase::Validating);
-    state.mark_ready("snap-1").unwrap_or_else(|_| unreachable!());
+    state
+        .mark_ready("snap-1")
+        .unwrap_or_else(|_| unreachable!());
     assert_eq!(state.phase(), BootstrapPhase::Ready);
     assert_eq!(state.progress().rows_read(), 3);
     assert_eq!(state.progress().applied_lsn(), lsn(120));
-    assert_eq!(state.progress().generation_candidate(), GenerationId::new(7));
+    assert_eq!(
+        state.progress().generation_candidate(),
+        GenerationId::new(7)
+    );
 }
 
 #[test]
@@ -79,10 +84,11 @@ fn bootstrap_rejects_identity_regression_gap_and_premature_publication() {
 #[test]
 fn snapshot_sink_is_ordered_bounded_idempotent_and_not_publishable_after_abort() {
     let mut sink = SnapshotSink::begin(descriptor()).unwrap_or_else(|_| unreachable!());
-    let first = SnapshotRow::try_new(10, b"a".to_vec(), b"one".to_vec())
-        .unwrap_or_else(|_| unreachable!());
+    let first =
+        SnapshotRow::try_new(10, b"a".to_vec(), b"one".to_vec()).unwrap_or_else(|_| unreachable!());
     assert_eq!(
-        sink.append(first.clone()).unwrap_or_else(|_| unreachable!()),
+        sink.append(first.clone())
+            .unwrap_or_else(|_| unreachable!()),
         SnapshotAppend::Applied
     );
     assert_eq!(
@@ -101,11 +107,13 @@ fn snapshot_sink_is_ordered_bounded_idempotent_and_not_publishable_after_abort()
             SnapshotRow::try_new(20, b"a".to_vec(), b"too-early".to_vec())
                 .unwrap_or_else(|_| unreachable!())
         ),
-        Err(BootstrapError::UnexpectedSnapshotTable { expected: 10, actual: 20 })
+        Err(BootstrapError::UnexpectedSnapshotTable {
+            expected: 10,
+            actual: 20
+        })
     ));
     sink.append(
-        SnapshotRow::try_new(10, b"b".to_vec(), b"two".to_vec())
-            .unwrap_or_else(|_| unreachable!()),
+        SnapshotRow::try_new(10, b"b".to_vec(), b"two".to_vec()).unwrap_or_else(|_| unreachable!()),
     )
     .unwrap_or_else(|_| unreachable!());
     sink.complete_table(10).unwrap_or_else(|_| unreachable!());
@@ -121,7 +129,10 @@ fn snapshot_sink_is_ordered_bounded_idempotent_and_not_publishable_after_abort()
 
     let mut aborted = SnapshotSink::begin(descriptor()).unwrap_or_else(|_| unreachable!());
     aborted.abort();
-    assert!(matches!(aborted.finish(), Err(BootstrapError::SnapshotAborted)));
+    assert!(matches!(
+        aborted.finish(),
+        Err(BootstrapError::SnapshotAborted)
+    ));
 }
 
 #[test]
