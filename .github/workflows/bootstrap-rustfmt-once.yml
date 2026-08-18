@@ -1,0 +1,33 @@
+name: Bootstrap rustfmt once
+
+on:
+  push:
+    branches:
+      - agent/v1-bootstrap-production
+    paths:
+      - .github/workflows/bootstrap-rustfmt-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/v1-bootstrap-production
+          fetch-depth: 0
+      - run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt
+      - run: cargo fmt --all
+      - run: cargo fmt --all -- --check
+      - name: Publish formatting and remove helper
+        shell: bash
+        run: |
+          git rm .github/workflows/bootstrap-rustfmt-once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "style: normalize bootstrap module and contract tests"
+          git push origin HEAD:agent/v1-bootstrap-production
