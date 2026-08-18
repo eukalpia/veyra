@@ -221,7 +221,10 @@ fn multi_room_admission_and_solver_bounds_fail_closed() {
 
     let mut request = query(&one, SolutionProfile::Cheapest);
     request.limit = 0;
-    assert_eq!(base.search_multi_room(&request), Err(QueryError::InvalidLimit(0)));
+    assert_eq!(
+        base.search_multi_room(&request),
+        Err(QueryError::InvalidLimit(0))
+    );
     request.limit = MAX_TOP_K + 1;
     assert_eq!(
         base.search_multi_room(&request),
@@ -229,10 +232,16 @@ fn multi_room_admission_and_solver_bounds_fail_closed() {
     );
     request.limit = 10;
     request.check_out_day = request.check_in_day;
-    assert_eq!(base.search_multi_room(&request), Err(QueryError::InvalidStayRange));
+    assert_eq!(
+        base.search_multi_room(&request),
+        Err(QueryError::InvalidStayRange)
+    );
     request.check_out_day = 11;
     request.budget = Some(MoneyMicros::signed(-1));
-    assert_eq!(base.search_multi_room(&request), Err(QueryError::NegativeBudget));
+    assert_eq!(
+        base.search_multi_room(&request),
+        Err(QueryError::NegativeBudget)
+    );
 
     let large_party = party(17, None);
     assert_eq!(

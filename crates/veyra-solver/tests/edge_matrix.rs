@@ -69,14 +69,7 @@ fn priced_entry_points_reject_invalid_stays_before_search() {
     let travelers = party(None);
     let offers = [room(10, 1, 1, 2)];
     assert_eq!(
-        solve_priced(
-            &travelers,
-            date(),
-            10,
-            10,
-            &offers,
-            SolverConfig::default()
-        ),
+        solve_priced(&travelers, date(), 10, 10, &offers, SolverConfig::default()),
         Err(SolverError::InvalidStayRange)
     );
     let topology = RoomRelationIndex::try_new(&[10], &[]).unwrap_or_else(|_| unreachable!());
@@ -170,7 +163,10 @@ fn every_spatial_relation_executes_true_and_false_paths() {
 
     let one_room = [room(10, 1, 1, 2)];
     let one_topology = RoomRelationIndex::try_new(&[10], &[]).unwrap_or_else(|_| unreachable!());
-    for relation in [RoomingRelation::AdjacentRooms, RoomingRelation::ConnectedRooms] {
+    for relation in [
+        RoomingRelation::AdjacentRooms,
+        RoomingRelation::ConnectedRooms,
+    ] {
         let result = solve_priced_with_topology(
             &party(Some(relation)),
             date(),

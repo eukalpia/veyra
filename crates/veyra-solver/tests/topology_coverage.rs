@@ -1,6 +1,4 @@
-use veyra_solver::{
-    RoomRelationIndex, RoomTopologyEdge, RoomTopologyRelation, TopologyError,
-};
+use veyra_solver::{RoomRelationIndex, RoomTopologyEdge, RoomTopologyRelation, TopologyError};
 
 #[test]
 fn topology_index_normalizes_and_exposes_every_boundary() {
