@@ -1,0 +1,212 @@
+name: Add error surface tests
+
+on:
+  push:
+    branches:
+      - agent/v1-production-completion
+    paths:
+      - .github/workflows/add-error-surface-tests.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: add-error-surface-tests
+  cancel-in-progress: false
+
+jobs:
+  add-and-verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/v1-production-completion
+          fetch-depth: 0
+      - name: Install pinned Rust
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Generate stable diagnostic and server mapping tests
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import re
+          from pathlib import Path
+
+          def closing_brace(text: str, opening: int) -> int:
+              depth = 0
+              for index, char in enumerate(text[opening:], opening):
+                  if char == "{":
+                      depth += 1
+                  elif char == "}":
+                      depth -= 1
+                      if depth == 0:
+                          return index
+              raise RuntimeError("unbalanced braces")
+
+          def enum_variants(path: Path, enum_name: str):
+              text = path.read_text()
+              marker = f"pub enum {enum_name}"
+              start = text.index(marker)
+              opening = text.index("{", start)
+              closing = closing_brace(text, opening)
+              body = text[opening + 1:closing]
+              variants = []
+              current = []
+              depth = 0
+              for char in body:
+                  if char in "<([{":
+                      depth += 1
+                  elif char in ">)]}":
+                      depth -= 1
+                  current.append(char)
+                  if char == "," and depth == 0:
+                      value = "".join(current).strip().rstrip(",").strip()
+                      current = []
+                      if value and not value.startswith("//"):
+                          variants.append(value)
+              tail = "".join(current).strip()
+              if tail:
+                  variants.append(tail)
+              return variants
+
+          def primitive(ty: str):
+              ty = ty.strip()
+              if re.fullmatch(r"u(?:8|16|32|64|128|size)|i(?:8|16|32|64|128|size)|usize|isize", ty):
+                  return "1"
+              if ty == "bool":
+                  return "true"
+              if ty == "String":
+                  return "String::new()"
+              if ty.startswith("Option<"):
+                  return "None"
+              return None
+
+          def expressions(enum_name: str, variants):
+              generated = []
+              for variant in variants:
+                  variant = re.sub(r"(?m)^\s*#\[[^\n]+\]\s*", "", variant).strip()
+                  unit = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_]*)", variant)
+                  if unit:
+                      generated.append(f"{enum_name}::{unit.group(1)}")
+                      continue
+                  tuple_match = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_]*)\s*\((.*)\)", variant, re.S)
+                  if tuple_match:
+                      types = [item.strip() for item in tuple_match.group(2).split(",") if item.strip()]
+                      values = [primitive(ty) for ty in types]
+                      if all(value is not None for value in values):
+                          generated.append(
+                              f"{enum_name}::{tuple_match.group(1)}(" + ", ".join(values) + ")"
+                          )
+                      continue
+                  struct_match = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_]*)\s*\{(.*)\}", variant, re.S)
+                  if struct_match:
+                      fields = []
+                      valid = True
+                      for item in struct_match.group(2).split(","):
+                          item = item.strip()
+                          if not item:
+                              continue
+                          field = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.+)", item, re.S)
+                          if field is None:
+                              valid = False
+                              break
+                          value = primitive(field.group(2))
+                          if value is None:
+                              valid = False
+                              break
+                          fields.append(f"{field.group(1)}: {value}")
+                      if valid:
+                          generated.append(
+                              f"{enum_name}::{struct_match.group(1)} {{ " + ", ".join(fields) + " }}"
+                          )
+              return generated
+
+          targets = [
+              (Path("crates/veyra-query/src/lib.rs"), "QueryError"),
+              (Path("crates/veyra-runtime/src/lib.rs"), "RuntimeError"),
+              (Path("crates/veyra-solver/src/lib.rs"), "SolverError"),
+          ]
+          for path, enum_name in targets:
+              if not path.exists() or f"pub enum {enum_name}" not in path.read_text():
+                  continue
+              text = path.read_text()
+              marker = f"generated_{enum_name.lower()}_diagnostic_surface"
+              if marker in text:
+                  continue
+              values = expressions(enum_name, enum_variants(path, enum_name))
+              if not values:
+                  continue
+              body = "\n        ".join(
+                  f"assert!(!{value}.to_string().is_empty());" for value in values
+              )
+              module = f'''
+
+#[cfg(test)]
+mod {marker} {{
+    use super::*;
+
+    #[test]
+    fn supported_error_diagnostics_are_non_empty() {{
+        {body}
+    }}
+}}
+'''
+              path.write_text(text.rstrip() + module + "\n")
+
+          query_path = Path("crates/veyra-query/src/lib.rs")
+          query_values = expressions("QueryError", enum_variants(query_path, "QueryError"))
+          server_path = Path("crates/veyra-server/src/lib.rs")
+          server = server_path.read_text()
+          marker = "generated_query_error_mapping_surface"
+          if marker not in server:
+              direct = re.search(
+                  r"(?m)^\s*(?:pub(?:\([^)]*\))?\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*[A-Za-z_][A-Za-z0-9_]*\s*:\s*(&\s*)?QueryError\s*\)",
+                  server,
+              )
+              from_impl = re.search(r"impl\s+From<QueryError>\s+for\s+([A-Za-z_][A-Za-z0-9_:<>]*)", server)
+              calls = []
+              if direct is not None:
+                  function = direct.group(1)
+                  by_ref = direct.group(2) is not None
+                  for value in query_values:
+                      argument = f"&{value}" if by_ref else value
+                      calls.append(f"let _ = {function}({argument});")
+              elif from_impl is not None:
+                  target = from_impl.group(1)
+                  for value in query_values:
+                      calls.append(f"let _: {target} = {value}.into();")
+              if calls:
+                  body = "\n        ".join(calls)
+                  server += f'''
+
+#[cfg(test)]
+mod {marker} {{
+    use super::*;
+    use veyra_query::QueryError;
+
+    #[test]
+    fn simple_query_rejections_have_total_server_mapping() {{
+        {body}
+    }}
+}}
+'''
+                  server_path.write_text(server.rstrip() + "\n")
+          PY
+      - name: Format and verify
+        run: |
+          cargo fmt --all
+          cargo test -p veyra-query -p veyra-runtime -p veyra-solver -p veyra-server --all-features --locked
+          cargo clippy -p veyra-query -p veyra-runtime -p veyra-solver -p veyra-server --all-targets --all-features --locked -- -D warnings
+      - name: Commit error-surface tests
+        shell: bash
+        run: |
+          git rm .github/workflows/add-error-surface-tests.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates .github/workflows/add-error-surface-tests.yml
+          git commit -m "test: qualify diagnostic and query error surfaces"
+          git fetch origin agent/v1-production-completion
+          git rebase origin/agent/v1-production-completion
+          git push origin HEAD:agent/v1-production-completion
