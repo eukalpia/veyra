@@ -1,34 +1,16 @@
-name: Coverage and portability hardening
+name: Coverage and portability hardening source plan
 
 on:
-  push:
-    branches:
-      - agent/v1-production-completion
-    paths:
-      - .github/workflows/coverage-portability-hardening.yml
   workflow_dispatch:
 
 permissions:
-  contents: write
-
-concurrency:
-  group: coverage-portability-hardening
-  cancel-in-progress: false
+  contents: read
 
 jobs:
-  harden-and-verify:
+  source-plan:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
-        with:
-          ref: agent/v1-production-completion
-          fetch-depth: 0
-
-      - name: Install pinned stable and nightly coverage toolchains
-        run: |
-          rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
-          rustup toolchain install nightly --profile minimal --component llvm-tools-preview
-          cargo install cargo-llvm-cov --locked
 
       - name: Fix deterministic temporary paths and simplify comparator coverage surface
         shell: bash
@@ -36,179 +18,226 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          def replace_once(path: Path, old: str, new: str) -> None:
-              text = path.read_text()
-              if new in text:
-                  return
-              if text.count(old) != 1:
-                  raise SystemExit(f"expected one replacement in {path}: {old[:100]!r}")
-              path.write_text(text.replace(old, new, 1))
+          query = Path('crates/veyra-query/src/lib.rs')
+          text = query.read_text()
 
-          checkpoint = Path("crates/veyra-cdc/tests/checkpoint_recovery_matrix.rs")
-          replace_once(
-              checkpoint,
-              "use std::path::PathBuf;\nuse std::time::{SystemTime, UNIX_EPOCH};\n",
-              "use std::path::PathBuf;\nuse std::sync::atomic::{AtomicU64, Ordering};\nuse std::time::{SystemTime, UNIX_EPOCH};\n",
-          )
-          replace_once(
-              checkpoint,
-              "const BODY_LEN: usize = 32;\n\nfn path(label: &str) -> PathBuf {\n",
-              "const BODY_LEN: usize = 32;\nstatic PATH_SEQUENCE: AtomicU64 = AtomicU64::new(0);\n\nfn path(label: &str) -> PathBuf {\n",
-          )
-          replace_once(
-              checkpoint,
-              '''    std::env::temp_dir().join(format!(
-                  "veyra-checkpoint-matrix-{label}-{}-{nanos}.bin",
-                  std::process::id()
-              ))
-          ''',
-              '''    let sequence = PATH_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-              std::env::temp_dir().join(format!(
-                  "veyra-checkpoint-matrix-{label}-{}-{nanos}-{sequence}.bin",
-                  std::process::id()
-              ))
-          ''',
-          )
-
-          query = Path("crates/veyra-query/src/lib.rs")
-          replace_once(
-              query,
-              '''        if query
-                      .budget
-                      .is_some_and(|budget| tagged.solution.total_price > budget)
-                  {
-                      explain.budget_rejected_properties += 1;
-                      continue;
-                  }
-          ''',
-              '''        if let Some(budget) = query.budget
-                      && tagged.solution.total_price > budget
-                  {
-                      explain.budget_rejected_properties += 1;
-                      continue;
-                  }
-          ''',
-          )
-          replace_once(
-              query,
-              '''    if query.budget.is_some_and(|budget| budget.get() < 0) {
-                  return Err(QueryError::NegativeBudget);
+          old = '''            if query.budget.is_some_and(|budget| projected.total > budget) {
+                  continue;
               }
-              let party_size = query.party.travelers().len();
-              if party_size == 0 || party_size > HARD_MAX_TRAVELERS {
-          ''',
-              '''    if let Some(budget) = query.budget
-                  && budget.get() < 0
+'''
+          new = '''            if let Some(budget) = query.budget
+                  && projected.total > budget
               {
-                  return Err(QueryError::NegativeBudget);
+                  continue;
               }
-              let party_size = query.party.travelers().len();
-              if party_size == 0 || party_size > HARD_MAX_TRAVELERS {
-          ''',
+'''
+          if new not in text:
+              if text.count(old) != 1:
+                  raise SystemExit('single-room budget site not unique')
+              text = text.replace(old, new, 1)
+
+          old = '''    if query.budget.is_some_and(|budget| budget.get() < 0) {
+        return Err(QueryError::NegativeBudget);
+    }
+'''
+          new = '''    if let Some(budget) = query.budget
+        && budget.get() < 0
+    {
+        return Err(QueryError::NegativeBudget);
+    }
+'''
+          text = text.replace(old, new)
+          text = text.replace(
+              '''    if party_size == 0 || party_size > MAX_QUERY_PARTY {
+        return Err(QueryError::PartyTooLarge(party_size));
+    }
+''',
+              '''    if party_size > MAX_QUERY_PARTY {
+        return Err(QueryError::PartyTooLarge(party_size));
+    }
+''',
           )
-          old_compare = '''fn compare_multi_room_hits(
-              left: &MultiRoomSearchHit,
-              right: &MultiRoomSearchHit,
-              profile: SolutionProfile,
-          ) -> Ordering {
-              let profile_order = match profile {
-                  SolutionProfile::Cheapest => left
-                      .projected_price
-                      .cmp(&right.projected_price)
-                      .then_with(|| left.rooms.len().cmp(&right.rooms.len()))
-                      .then_with(|| left.soft_penalty.cmp(&right.soft_penalty)),
-                  SolutionProfile::FewestRooms => left
-                      .rooms
-                      .len()
-                      .cmp(&right.rooms.len())
-                      .then_with(|| left.projected_price.cmp(&right.projected_price))
-                      .then_with(|| left.soft_penalty.cmp(&right.soft_penalty)),
-                  SolutionProfile::BestFamilyLayout => left
-                      .soft_penalty
-                      .cmp(&right.soft_penalty)
-                      .then_with(|| left.projected_price.cmp(&right.projected_price))
-                      .then_with(|| left.rooms.len().cmp(&right.rooms.len())),
-              };
-              profile_order
-                  .then_with(|| left.property_id.cmp(&right.property_id))
-                  .then_with(|| left.rooms.cmp(&right.rooms))
-          }
-          '''
-          new_compare = '''fn compare_multi_room_hits(
-              left: &MultiRoomSearchHit,
-              right: &MultiRoomSearchHit,
-              profile: SolutionProfile,
-          ) -> Ordering {
-              match profile {
-                  SolutionProfile::Cheapest => (
-                      left.projected_price,
-                      left.rooms.len(),
-                      left.soft_penalty,
-                      left.property_id,
-                      &left.rooms,
-                  )
-                      .cmp(&(
-                          right.projected_price,
-                          right.rooms.len(),
-                          right.soft_penalty,
-                          right.property_id,
-                          &right.rooms,
-                      )),
-                  SolutionProfile::FewestRooms => (
-                      left.rooms.len(),
-                      left.projected_price,
-                      left.soft_penalty,
-                      left.property_id,
-                      &left.rooms,
-                  )
-                      .cmp(&(
-                          right.rooms.len(),
-                          right.projected_price,
-                          right.soft_penalty,
-                          right.property_id,
-                          &right.rooms,
-                      )),
-                  SolutionProfile::BestFamilyLayout => (
-                      left.soft_penalty,
-                      left.projected_price,
-                      left.rooms.len(),
-                      left.property_id,
-                      &left.rooms,
-                  )
-                      .cmp(&(
-                          right.soft_penalty,
-                          right.projected_price,
-                          right.rooms.len(),
-                          right.property_id,
-                          &right.rooms,
-                      )),
-              }
-          }
-          '''
-          replace_once(query, old_compare, new_compare)
+          text = text.replace(
+              '''    if party_size == 0 || party_size > HARD_MAX_TRAVELERS {
+        return Err(QueryError::SolverPartyTooLarge(party_size));
+    }
+''',
+              '''    if party_size > HARD_MAX_TRAVELERS {
+        return Err(QueryError::SolverPartyTooLarge(party_size));
+    }
+''',
+          )
+
+          old = '''        if query
+            .budget
+            .is_some_and(|budget| tagged.solution.total_price > budget)
+        {
+            explain.budget_rejected_properties += 1;
+            continue;
+        }
+'''
+          new = '''        if let Some(budget) = query.budget
+            && tagged.solution.total_price > budget
+        {
+            explain.budget_rejected_properties += 1;
+            continue;
+        }
+'''
+          if new not in text:
+              if text.count(old) != 1:
+                  raise SystemExit('multi-room budget site not unique')
+              text = text.replace(old, new, 1)
+
+          old = '''fn compare_multi_room_hits(
+    left: &MultiRoomSearchHit,
+    right: &MultiRoomSearchHit,
+    profile: SolutionProfile,
+) -> Ordering {
+    let profile_order = match profile {
+        SolutionProfile::Cheapest => left
+            .projected_price
+            .cmp(&right.projected_price)
+            .then_with(|| left.rooms.len().cmp(&right.rooms.len()))
+            .then_with(|| left.soft_penalty.cmp(&right.soft_penalty)),
+        SolutionProfile::FewestRooms => left
+            .rooms
+            .len()
+            .cmp(&right.rooms.len())
+            .then_with(|| left.projected_price.cmp(&right.projected_price))
+            .then_with(|| left.soft_penalty.cmp(&right.soft_penalty)),
+        SolutionProfile::BestFamilyLayout => left
+            .soft_penalty
+            .cmp(&right.soft_penalty)
+            .then_with(|| left.projected_price.cmp(&right.projected_price))
+            .then_with(|| left.rooms.len().cmp(&right.rooms.len())),
+    };
+    profile_order
+        .then_with(|| left.property_id.cmp(&right.property_id))
+        .then_with(|| left.rooms.cmp(&right.rooms))
+}
+'''
+          new = '''fn compare_multi_room_hits(
+    left: &MultiRoomSearchHit,
+    right: &MultiRoomSearchHit,
+    profile: SolutionProfile,
+) -> Ordering {
+    match profile {
+        SolutionProfile::Cheapest => (
+            left.projected_price,
+            left.rooms.len(),
+            left.soft_penalty,
+            left.property_id,
+            &left.rooms,
+        )
+            .cmp(&(
+                right.projected_price,
+                right.rooms.len(),
+                right.soft_penalty,
+                right.property_id,
+                &right.rooms,
+            )),
+        SolutionProfile::FewestRooms => (
+            left.rooms.len(),
+            left.projected_price,
+            left.soft_penalty,
+            left.property_id,
+            &left.rooms,
+        )
+            .cmp(&(
+                right.rooms.len(),
+                right.projected_price,
+                right.soft_penalty,
+                right.property_id,
+                &right.rooms,
+            )),
+        SolutionProfile::BestFamilyLayout => (
+            left.soft_penalty,
+            left.projected_price,
+            left.rooms.len(),
+            left.property_id,
+            &left.rooms,
+        )
+            .cmp(&(
+                right.soft_penalty,
+                right.projected_price,
+                right.rooms.len(),
+                right.property_id,
+                &right.rooms,
+            )),
+    }
+}
+'''
+          if new not in text:
+              if text.count(old) != 1:
+                  raise SystemExit('multi-room comparator site not unique')
+              text = text.replace(old, new, 1)
+          query.write_text(text)
+
+          cargo = Path('crates/veyra-server/Cargo.toml')
+          text = cargo.read_text()
+          if 'veyra-availability = ' not in text:
+              marker = '[dev-dependencies]\n'
+              if marker not in text:
+                  raise SystemExit('server dev-dependencies marker missing')
+              text = text.replace(
+                  marker,
+                  marker + '''veyra-availability = { version = "0.1.0", path = "../veyra-availability" }
+veyra-pricing = { version = "0.1.0", path = "../veyra-pricing" }
+veyra-ranking = { version = "0.1.0", path = "../veyra-ranking" }
+veyra-restrictions = { version = "0.1.0", path = "../veyra-restrictions" }
+veyra-rule-compiler = { version = "0.1.0", path = "../veyra-rule-compiler" }
+veyra-rules = { version = "0.1.0", path = "../veyra-rules" }
+''',
+                  1,
+              )
+              cargo.write_text(text)
           PY
 
       - name: Add exact multi-room coverage matrix
         shell: bash
         run: |
-          cat > crates/veyra-query/tests/multi_room_matrix.rs <<'RS'
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('crates/veyra-query/tests/multi_room_matrix.rs')
+          text = path.read_text()
+          old = '''fn query(
+    party: &BookingParty,
+    profile: SolutionProfile,
+) -> MultiRoomStayQuery<'_> {
+'''
+          new = '''fn query<'a>(
+    party: &'a BookingParty,
+    profile: SolutionProfile,
+) -> MultiRoomStayQuery<'a> {
+'''
+          if new not in text:
+              if text.count(old) != 1:
+                  raise SystemExit('multi-room helper site not unique')
+              path.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Add topology, solver, runtime, segment, and server coverage regressions
+        shell: bash
+        run: |
+          cat > crates/veyra-server/tests/query_success_matrix.rs <<'RS'
+          use std::sync::Arc;
+
           use veyra_availability::AvailabilityIndex;
-          use veyra_party::{
-              AgeEvidence, BookingParty, CivilDate, ConstraintStrength, RoomingIntent,
-              RoomingRelation, Traveler, TravelerId,
-          };
-          use veyra_pricing::{MoneyMicros, OccupancyAdjustment, PriceVector, PricingError};
+          use veyra_party::{AgeEvidence, BookingParty, CivilDate, RoomingRelation, Traveler, TravelerId};
+          use veyra_pricing::{MoneyMicros, OccupancyAdjustment, PriceVector};
           use veyra_query::{
-              MultiRoomStayQuery, QueryError, RoomDocument, RoomPlacement, RoomSpatialProjection,
-              RoomTopologyEdge, RoomTopologyRelation, SearchEngine, SolutionProfile, SolverConfig,
+              MultiRoomStayQuery, QueryError, RoomDocument, SearchEngine, SolutionProfile,
+              SolverConfig, StayQuery,
           };
-          use veyra_ranking::MAX_TOP_K;
+          use veyra_ranking::{RankingKind, RankingProfile};
           use veyra_restrictions::{
               RESTRICTION_SCHEMA_V1, RestrictionRule, compile as compile_restrictions,
           };
           use veyra_rule_compiler::{RULE_SCHEMA_V1, compile as compile_rule};
           use veyra_rules::Rule;
-          use veyra_solver::{HARD_MAX_ROOMS, SolverError, TopologyError};
+          use veyra_runtime::{GenerationState, PublishedGeneration, RuntimeSnapshot};
+          use veyra_server::{QueryService, ServiceQueryError};
+          use veyra_types::{GenerationId, LogSequenceNumber, ProjectionProgress};
 
           fn date() -> CivilDate {
               CivilDate::new(2026, 9, 21).unwrap_or_else(|_| unreachable!())
@@ -218,801 +247,554 @@ jobs:
               MoneyMicros::try_nonnegative(value).unwrap_or_else(|_| unreachable!())
           }
 
-          fn party(count: u32, relation: Option<RoomingRelation>) -> BookingParty {
+          fn party() -> BookingParty {
               let mut builder = BookingParty::builder();
-              for id in 1..=count {
-                  builder
-                      .add_traveler(Traveler::new(
-                          TravelerId::new(id),
-                          AgeEvidence::AgeAtCheckIn(30),
-                          false,
-                      ))
-                      .unwrap_or_else(|_| unreachable!());
-              }
-              if let Some(relation) = relation {
-                  builder
-                      .add_rooming_intent(RoomingIntent {
-                          left: TravelerId::new(1),
-                          right: TravelerId::new(2),
-                          strength: ConstraintStrength::Must,
-                          relation,
-                      })
-                      .unwrap_or_else(|_| unreachable!());
-              }
+              builder
+                  .add_traveler(Traveler::new(
+                      TravelerId::new(1),
+                      AgeEvidence::AgeAtCheckIn(30),
+                      false,
+                  ))
+                  .unwrap_or_else(|_| unreachable!());
               builder.build().unwrap_or_else(|_| unreachable!())
           }
 
-          fn restrictions(minimum: u16, maximum: u16) -> veyra_restrictions::CompiledRestrictions {
-              compile_restrictions(
-                  RESTRICTION_SCHEMA_V1,
-                  &[
-                      RestrictionRule::MinStay(minimum),
-                      RestrictionRule::MaxStay(maximum),
-                  ],
+          fn engine() -> SearchEngine {
+              let mut availability =
+                  AvailabilityIndex::new(10, 2, 1).unwrap_or_else(|_| unreachable!());
+              for day in 10..12 {
+                  availability
+                      .set_available(day, 0, true)
+                      .unwrap_or_else(|_| unreachable!());
+              }
+              SearchEngine::try_new(
+                  availability,
+                  vec![RoomDocument {
+                      room_id: 0,
+                      property_id: 7,
+                      destination_id: 55,
+                      adult_age: 18,
+                      occupancy_rule: compile_rule(
+                          RULE_SCHEMA_V1,
+                          &Rule::Capacity { min: 1, max: 2 },
+                      )
+                      .unwrap_or_else(|_| unreachable!()),
+                      restrictions: compile_restrictions(
+                          RESTRICTION_SCHEMA_V1,
+                          &[RestrictionRule::MinStay(1), RestrictionRule::MaxStay(2)],
+                      )
+                      .unwrap_or_else(|_| unreachable!()),
+                      prices: PriceVector::try_new(10, vec![money(100), money(100)], 1)
+                          .unwrap_or_else(|_| unreachable!()),
+                      occupancy_adjustment: OccupancyAdjustment {
+                          per_adult_per_night: MoneyMicros::signed(0),
+                          per_child_per_night: MoneyMicros::signed(0),
+                      },
+                      distance_meters: 100,
+                      quality_milli: 900,
+                      flexibility_milli: 900,
+                      family_penalty: 0,
+                  }],
               )
               .unwrap_or_else(|_| unreachable!())
           }
 
-          fn room(
-              room_id: u32,
-              property_id: u32,
-              destination_id: u32,
-              capacity: u16,
-              nightly: i64,
-              price_start: i32,
-          ) -> RoomDocument {
-              RoomDocument {
-                  room_id,
-                  property_id,
-                  destination_id,
-                  adult_age: 18,
-                  occupancy_rule: compile_rule(
-                      RULE_SCHEMA_V1,
-                      &Rule::And(vec![
-                          Rule::Capacity {
-                              min: 1,
-                              max: capacity,
-                          },
-                          Rule::RequireAdult {
-                              adult_age: 18,
-                              min_adults: 1,
-                          },
-                      ]),
-                  )
-                  .unwrap_or_else(|_| unreachable!()),
-                  restrictions: restrictions(1, 5),
-                  prices: PriceVector::try_new(price_start, vec![money(nightly); 8], 1)
-                      .unwrap_or_else(|_| unreachable!()),
-                  occupancy_adjustment: OccupancyAdjustment {
-                      per_adult_per_night: money(0),
-                      per_child_per_night: money(0),
-                  },
-                  distance_meters: 100,
-                  quality_milli: 800,
-                  flexibility_milli: 800,
-                  family_penalty: 0,
-              }
+          fn service() -> QueryService {
+              let status = RuntimeSnapshot::ready(
+                  GenerationId::new(9),
+                  ProjectionProgress::at(LogSequenceNumber::new(55)),
+              );
+              let publication = PublishedGeneration::try_with_payload(status, Arc::new(engine()))
+                  .unwrap_or_else(|_| unreachable!());
+              QueryService::new(GenerationState::new(publication))
           }
 
-          fn engine(start_day: u32, days: u32, rooms: Vec<RoomDocument>) -> SearchEngine {
-              let room_count = u32::try_from(rooms.len()).unwrap_or_else(|_| unreachable!());
-              let mut availability = AvailabilityIndex::new(start_day, days, room_count)
+          #[test]
+          fn query_service_executes_single_and_multi_room_success_paths() {
+              let party = party();
+              let single = service()
+                  .search(
+                      LogSequenceNumber::new(55),
+                      &StayQuery {
+                          destination_id: 55,
+                          check_in_day: 10,
+                          check_out_day: 11,
+                          check_in_date: date(),
+                          party: &party,
+                          budget: None,
+                          ranking: RankingProfile::v1(RankingKind::Cheapest),
+                          limit: 10,
+                      },
+                  )
                   .unwrap_or_else(|_| unreachable!());
-              for room_id in 0..room_count {
-                  for day in start_day..start_day + days {
-                      availability
-                          .set_available(day, room_id, true)
+              assert_eq!(single.hits.len(), 1);
+
+              let multi = service()
+                  .search_multi_room(
+                      LogSequenceNumber::new(55),
+                      &MultiRoomStayQuery {
+                          destination_id: 55,
+                          check_in_day: 10,
+                          check_out_day: 11,
+                          check_in_date: date(),
+                          party: &party,
+                          budget: None,
+                          profile: SolutionProfile::Cheapest,
+                          solver: SolverConfig::default(),
+                          limit: 10,
+                      },
+                  )
+                  .unwrap_or_else(|_| unreachable!());
+              assert_eq!(multi.hits.len(), 1);
+          }
+
+          #[test]
+          fn admitted_query_rejections_keep_stable_machine_and_display_surfaces() {
+              let party = party();
+              let error = service()
+                  .search(
+                      LogSequenceNumber::new(55),
+                      &StayQuery {
+                          destination_id: 55,
+                          check_in_day: 10,
+                          check_out_day: 11,
+                          check_in_date: date(),
+                          party: &party,
+                          budget: None,
+                          ranking: RankingProfile::v1(RankingKind::Cheapest),
+                          limit: 0,
+                      },
+                  )
+                  .unwrap_err();
+              assert_eq!(error.code(), "query_rejected");
+              assert!(error.to_string().contains("query_rejected"));
+              assert_eq!(error, ServiceQueryError::Query(QueryError::InvalidLimit(0)));
+
+              let semantic = ServiceQueryError::Query(QueryError::MissingRoomTopology(
+                  RoomingRelation::ConnectedRooms,
+              ));
+              assert_eq!(semantic.code(), "unsupported_semantics");
+              assert!(semantic.to_string().contains("unsupported_semantics"));
+          }
+          RS
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def append_once(path: Path, marker: str, block: str) -> None:
+              text = path.read_text()
+              if marker not in text:
+                  path.write_text(text.rstrip() + '\n\n' + block.strip() + '\n')
+
+          append_once(
+              Path('crates/veyra-solver/src/lib.rs'),
+              'mod private_region_coverage',
+              r'''
+          #[cfg(test)]
+          mod private_region_coverage {
+              use super::*;
+              use veyra_party::{AgeEvidence, RoomingIntent, Traveler};
+              use veyra_rule_compiler::{RULE_SCHEMA_V1, compile};
+              use veyra_rules::Rule;
+
+              fn date() -> CivilDate {
+                  CivilDate::new(2026, 9, 21).unwrap_or_else(|_| unreachable!())
+              }
+
+              fn rule(min: u16, max: u16) -> CompiledRule {
+                  compile(RULE_SCHEMA_V1, &Rule::Capacity { min, max })
+                      .unwrap_or_else(|_| unreachable!())
+              }
+
+              fn party_with_intent(
+                  left: TravelerId,
+                  right: TravelerId,
+                  strength: ConstraintStrength,
+                  relation: RoomingRelation,
+              ) -> BookingParty {
+                  let mut builder = BookingParty::builder();
+                  for id in 1..=2 {
+                      builder
+                          .add_traveler(Traveler::new(
+                              TravelerId::new(id),
+                              AgeEvidence::AgeAtCheckIn(30),
+                              false,
+                          ))
                           .unwrap_or_else(|_| unreachable!());
                   }
-              }
-              SearchEngine::try_new(availability, rooms).unwrap_or_else(|_| unreachable!())
-          }
-
-          fn query<'a>(
-              party: &'a BookingParty,
-              profile: SolutionProfile,
-          ) -> MultiRoomStayQuery<'a> {
-              MultiRoomStayQuery {
-                  destination_id: 55,
-                  check_in_day: 10,
-                  check_out_day: 11,
-                  check_in_date: date(),
-                  party,
-                  budget: None,
-                  profile,
-                  solver: SolverConfig::default(),
-                  limit: 10,
-              }
-          }
-
-          #[test]
-          fn spatial_projection_validates_complete_dense_topology() {
-              let empty = RoomSpatialProjection::try_new(vec![], vec![])
-                  .unwrap_or_else(|_| unreachable!());
-              assert!(empty.is_empty());
-              assert_eq!(empty.len(), 0);
-
-              let placements = vec![
-                  RoomPlacement {
-                      room_id: 0,
-                      floor: 1,
-                      building: 1,
-                  },
-                  RoomPlacement {
-                      room_id: 1,
-                      floor: 2,
-                      building: 1,
-                  },
-              ];
-              let projection = RoomSpatialProjection::try_new(placements.clone(), vec![])
-                  .unwrap_or_else(|_| unreachable!());
-              assert!(!projection.is_empty());
-              assert_eq!(projection.len(), 2);
-
-              let invalid_edges = [
-                  (
-                      RoomTopologyEdge {
-                          left_room_id: 99,
-                          right_room_id: 1,
-                          relation: RoomTopologyRelation::Near,
-                      },
-                      TopologyError::UnknownRoom(99),
-                  ),
-                  (
-                      RoomTopologyEdge {
-                          left_room_id: 0,
-                          right_room_id: 99,
-                          relation: RoomTopologyRelation::Near,
-                      },
-                      TopologyError::UnknownRoom(99),
-                  ),
-                  (
-                      RoomTopologyEdge {
-                          left_room_id: 0,
-                          right_room_id: 0,
-                          relation: RoomTopologyRelation::Adjacent,
-                      },
-                      TopologyError::SelfEdge(0),
-                  ),
-              ];
-              for (edge, expected) in invalid_edges {
-                  assert_eq!(
-                      RoomSpatialProjection::try_new(placements.clone(), vec![edge]),
-                      Err(QueryError::Topology(expected))
-                  );
-              }
-
-              let edge = RoomTopologyEdge {
-                  left_room_id: 0,
-                  right_room_id: 1,
-                  relation: RoomTopologyRelation::Connected,
-              };
-              assert!(matches!(
-                  RoomSpatialProjection::try_new(placements.clone(), vec![edge, edge]),
-                  Err(QueryError::Topology(TopologyError::DuplicateEdge { .. }))
-              ));
-
-              let availability = AvailabilityIndex::new(10, 1, 2)
-                  .unwrap_or_else(|_| unreachable!());
-              let incomplete = RoomSpatialProjection::try_new(
-                  vec![RoomPlacement {
-                      room_id: 0,
-                      floor: 1,
-                      building: 1,
-                  }],
-                  vec![],
-              )
-              .unwrap_or_else(|_| unreachable!());
-              assert!(matches!(
-                  SearchEngine::try_new_with_spatial(
-                      availability,
-                      vec![room(0, 1, 55, 2, 100, 10), room(1, 1, 55, 2, 100, 10)],
-                      incomplete,
-                  ),
-                  Err(QueryError::SpatialRoomCountMismatch {
-                      expected: 2,
-                      actual: 1,
-                  })
-              ));
-          }
-
-          #[test]
-          fn multi_room_admission_and_solver_bounds_fail_closed() {
-              let one = party(1, None);
-              let base = engine(10, 8, vec![room(0, 1, 55, 2, 100, 10)]);
-
-              let mut request = query(&one, SolutionProfile::Cheapest);
-              request.limit = 0;
-              assert_eq!(base.search_multi_room(&request), Err(QueryError::InvalidLimit(0)));
-              request.limit = MAX_TOP_K + 1;
-              assert_eq!(
-                  base.search_multi_room(&request),
-                  Err(QueryError::InvalidLimit(MAX_TOP_K + 1))
-              );
-              request.limit = 10;
-              request.check_out_day = request.check_in_day;
-              assert_eq!(
-                  base.search_multi_room(&request),
-                  Err(QueryError::InvalidStayRange)
-              );
-              request.check_out_day = 11;
-              request.budget = Some(MoneyMicros::signed(-1));
-              assert_eq!(
-                  base.search_multi_room(&request),
-                  Err(QueryError::NegativeBudget)
-              );
-
-              let large_party = party(17, None);
-              assert_eq!(
-                  base.search_multi_room(&query(&large_party, SolutionProfile::Cheapest)),
-                  Err(QueryError::SolverPartyTooLarge(17))
-              );
-
-              let topology_party = party(2, Some(RoomingRelation::SameFloor));
-              assert_eq!(
-                  base.search_multi_room(&query(
-                      &topology_party,
-                      SolutionProfile::Cheapest,
-                  )),
-                  Err(QueryError::MissingRoomTopology(RoomingRelation::SameFloor))
-              );
-
-              let rooms = (0..=HARD_MAX_ROOMS)
-                  .map(|index| {
-                      room(
-                          u32::try_from(index).unwrap_or_else(|_| unreachable!()),
-                          9,
-                          55,
-                          2,
-                          100,
-                          10,
-                      )
-                  })
-                  .collect::<Vec<_>>();
-              let too_many = engine(10, 1, rooms);
-              assert!(matches!(
-                  too_many.search_multi_room(&query(&one, SolutionProfile::Cheapest)),
-                  Err(QueryError::SolverRoomLimit {
-                      property_id: 9,
-                      rooms,
-                  }) if rooms == HARD_MAX_ROOMS + 1
-              ));
-
-              let outside_horizon = engine(10, 1, vec![room(0, 1, 55, 2, 100, 20)]);
-              assert_eq!(
-                  outside_horizon.search_multi_room(&query(&one, SolutionProfile::Cheapest)),
-                  Err(QueryError::Pricing(PricingError::OutsidePriceHorizon))
-              );
-
-              let two = party(2, None);
-              let bounded = engine(
-                  10,
-                  1,
-                  vec![room(0, 1, 55, 1, 100, 10), room(1, 1, 55, 1, 100, 10)],
-              );
-              let mut request = query(&two, SolutionProfile::Cheapest);
-              request.solver = SolverConfig {
-                  max_states: 1,
-                  max_solutions: 10,
-              };
-              assert_eq!(
-                  bounded.search_multi_room(&request),
-                  Err(QueryError::Solver(SolverError::StateBudgetExhausted))
-              );
-              request.solver = SolverConfig {
-                  max_states: 0,
-                  max_solutions: 10,
-              };
-              assert_eq!(
-                  bounded.search_multi_room(&request),
-                  Err(QueryError::Solver(SolverError::InvalidBudget))
-              );
-          }
-
-          #[test]
-          fn multi_room_service_day_conversions_fail_closed() {
-              let one = party(1, None);
-              let beyond = u32::try_from(i32::MAX)
-                  .unwrap_or_else(|_| unreachable!())
-                  .saturating_add(1);
-              let high = engine(beyond, 2, vec![room(0, 1, 55, 2, 100, 0)]);
-              let request = MultiRoomStayQuery {
-                  destination_id: 55,
-                  check_in_day: beyond,
-                  check_out_day: beyond + 1,
-                  check_in_date: date(),
-                  party: &one,
-                  budget: None,
-                  profile: SolutionProfile::Cheapest,
-                  solver: SolverConfig::default(),
-                  limit: 10,
-              };
-              assert_eq!(
-                  high.search_multi_room(&request),
-                  Err(QueryError::ServiceDayOutOfRange)
-              );
-
-              let boundary = u32::try_from(i32::MAX).unwrap_or_else(|_| unreachable!());
-              let high = engine(boundary, 2, vec![room(0, 1, 55, 2, 100, 0)]);
-              let request = MultiRoomStayQuery {
-                  destination_id: 55,
-                  check_in_day: boundary,
-                  check_out_day: boundary + 1,
-                  check_in_date: date(),
-                  party: &one,
-                  budget: None,
-                  profile: SolutionProfile::Cheapest,
-                  solver: SolverConfig::default(),
-                  limit: 10,
-              };
-              assert_eq!(
-                  high.search_multi_room(&request),
-                  Err(QueryError::ServiceDayOutOfRange)
-              );
-          }
-
-          #[test]
-          fn explain_tracks_infeasible_budget_destination_and_restriction_paths() {
-              let travelers = party(2, None);
-              let mut rooms = vec![
-                  room(0, 1, 55, 2, 200, 10),
-                  room(1, 2, 55, 1, 100, 10),
-                  room(2, 3, 55, 2, 1_000, 10),
-                  room(3, 4, 99, 2, 100, 10),
-                  room(4, 5, 55, 2, 100, 10),
-              ];
-              rooms[4].restrictions = restrictions(2, 5);
-              let engine = engine(10, 1, rooms);
-              let mut request = query(&travelers, SolutionProfile::Cheapest);
-              request.budget = Some(money(500));
-
-              let result = engine
-                  .search_multi_room(&request)
-                  .unwrap_or_else(|_| unreachable!());
-              assert_eq!(result.hits.len(), 1);
-              assert_eq!(result.hits[0].property_id, 1);
-              assert_eq!(result.explain.destination_candidates, 4);
-              assert_eq!(result.explain.restriction_candidates, 3);
-              assert_eq!(result.explain.properties_considered, 3);
-              assert_eq!(result.explain.properties_solved, 2);
-              assert_eq!(result.explain.infeasible_properties, 1);
-              assert_eq!(result.explain.budget_rejected_properties, 1);
-              assert_eq!(result.explain.returned, 1);
-          }
-
-          #[test]
-          fn all_solution_profiles_sort_and_limit_deterministically() {
-              let travelers = party(2, None);
-              let rooms = vec![
-                  room(0, 1, 55, 2, 200, 10),
-                  room(1, 2, 55, 1, 100, 10),
-                  room(2, 2, 55, 1, 100, 10),
-                  room(3, 3, 55, 2, 200, 10),
-                  room(4, 4, 55, 2, 200, 10),
-              ];
-              let engine = engine(10, 1, rooms);
-
-              for profile in [
-                  SolutionProfile::Cheapest,
-                  SolutionProfile::FewestRooms,
-                  SolutionProfile::BestFamilyLayout,
-              ] {
-                  let mut request = query(&travelers, profile);
-                  request.limit = 3;
-                  let result = engine
-                      .search_multi_room(&request)
+                  builder
+                      .add_rooming_intent(RoomingIntent {
+                          left,
+                          right,
+                          strength,
+                          relation,
+                      })
                       .unwrap_or_else(|_| unreachable!());
-                  assert_eq!(
-                      result
-                          .hits
-                          .iter()
-                          .map(|hit| hit.property_id)
-                          .collect::<Vec<_>>(),
-                      vec![1, 3, 4]
-                  );
-                  assert_eq!(result.explain.returned, 3);
+                  builder.build().unwrap_or_else(|_| unreachable!())
               }
-          }
-          RS
 
-      - name: Add topology, solver, runtime, segment, and server coverage regressions
-        shell: bash
-        run: |
-          cat > crates/veyra-solver/tests/topology_coverage.rs <<'RS'
-          use veyra_solver::{
-              RoomRelationIndex, RoomTopologyEdge, RoomTopologyRelation, TopologyError,
-          };
-
-          #[test]
-          fn topology_index_normalizes_and_exposes_every_boundary() {
-              assert_eq!(
-                  RoomRelationIndex::try_new(&[7, 7], &[]),
-                  Err(TopologyError::DuplicateRoom(7))
-              );
-              assert_eq!(
-                  RoomRelationIndex::try_new(
-                      &[7, 8],
-                      &[RoomTopologyEdge {
-                          left_room_id: 99,
-                          right_room_id: 8,
-                          relation: RoomTopologyRelation::Near,
-                      }],
-                  ),
-                  Err(TopologyError::UnknownRoom(99))
-              );
-
-              let index = RoomRelationIndex::try_new(
-                  &[7, 8],
-                  &[RoomTopologyEdge {
-                      left_room_id: 8,
-                      right_room_id: 7,
-                      relation: RoomTopologyRelation::Adjacent,
-                  }],
-              )
-              .unwrap_or_else(|_| unreachable!());
-              assert!(index.contains_room(7));
-              assert!(!index.contains_room(99));
-              assert!(index.contains(RoomTopologyRelation::Adjacent, 7, 8));
-              assert!(index.contains(RoomTopologyRelation::Adjacent, 8, 7));
-              assert!(!index.contains(RoomTopologyRelation::Adjacent, 7, 7));
-              assert!(!index.contains(RoomTopologyRelation::Connected, 7, 8));
-
-              for error in [
-                  TopologyError::DuplicateRoom(7),
-                  TopologyError::UnknownRoom(9),
-                  TopologyError::SelfEdge(7),
-                  TopologyError::DuplicateEdge {
-                      left_room_id: 7,
-                      right_room_id: 8,
-                      relation: RoomTopologyRelation::Near,
-                  },
-              ] {
-                  assert!(!error.to_string().is_empty());
-              }
-          }
-          RS
-
-          cat > crates/veyra-solver/tests/edge_matrix.rs <<'RS'
-          use veyra_party::{
-              AgeEvidence, BookingParty, CivilDate, ConstraintStrength, RoomingIntent,
-              RoomingRelation, Traveler, TravelerId,
-          };
-          use veyra_pricing::{MoneyMicros, OccupancyAdjustment, PriceVector};
-          use veyra_rule_compiler::{RULE_SCHEMA_V1, compile};
-          use veyra_rules::Rule;
-          use veyra_solver::{
-              PricedRoomOffer, RoomRelationIndex, RoomTopologyEdge, RoomTopologyRelation,
-              SolverConfig, SolverError, solve_priced, solve_priced_with_topology,
-          };
-
-          fn date() -> CivilDate {
-              CivilDate::new(2026, 9, 21).unwrap_or_else(|_| unreachable!())
-          }
-
-          fn money(value: i64) -> MoneyMicros {
-              MoneyMicros::try_nonnegative(value).unwrap_or_else(|_| unreachable!())
-          }
-
-          fn party(relation: Option<RoomingRelation>) -> BookingParty {
-              let mut builder = BookingParty::builder();
-              for id in 1..=2 {
+              fn single_party() -> BookingParty {
+                  let mut builder = BookingParty::builder();
                   builder
                       .add_traveler(Traveler::new(
-                          TravelerId::new(id),
+                          TravelerId::new(1),
                           AgeEvidence::AgeAtCheckIn(30),
                           false,
                       ))
                       .unwrap_or_else(|_| unreachable!());
+                  builder.build().unwrap_or_else(|_| unreachable!())
               }
-              if let Some(relation) = relation {
-                  builder
-                      .add_rooming_intent(RoomingIntent {
-                          left: TravelerId::new(1),
-                          right: TravelerId::new(2),
-                          strength: ConstraintStrength::Must,
-                          relation,
-                      })
-                      .unwrap_or_else(|_| unreachable!());
-              }
-              builder.build().unwrap_or_else(|_| unreachable!())
-          }
 
-          fn room(id: u32, floor: u16, building: u16, capacity: u16) -> PricedRoomOffer {
-              PricedRoomOffer {
-                  room_id: id,
-                  prices: PriceVector::try_new(10, vec![money(100)], 1)
-                      .unwrap_or_else(|_| unreachable!()),
-                  occupancy_adjustment: OccupancyAdjustment {
-                      per_adult_per_night: money(0),
-                      per_child_per_night: money(0),
-                  },
-                  floor,
-                  building,
-                  adult_age: 18,
-                  occupancy_rule: compile(
-                      RULE_SCHEMA_V1,
-                      &Rule::Capacity {
-                          min: 1,
-                          max: capacity,
-                      },
+              fn prepared<'a>(
+                  room_id: u32,
+                  floor: u16,
+                  building: u16,
+                  policy: &'a CompiledRule,
+                  price: i64,
+              ) -> PreparedOffer<'a> {
+                  PreparedOffer {
+                      room_id,
+                      floor,
+                      building,
+                      adult_age: 18,
+                      occupancy_rule: policy,
+                      price: PriceSource::Static(MoneyMicros::signed(price)),
+                  }
+              }
+
+              #[test]
+              fn hard_constraint_and_assignment_truth_table() {
+                  let policy_a = rule(1, 2);
+                  let policy_b = rule(1, 2);
+                  let party = party_with_intent(
+                      TravelerId::new(1),
+                      TravelerId::new(2),
+                      ConstraintStrength::Must,
+                      RoomingRelation::SameRoom,
+                  );
+                  let mut context = SearchContext {
+                      party: &party,
+                      check_in: date(),
+                      offers: vec![
+                          prepared(10, 1, 1, &policy_a, 100),
+                          prepared(11, 2, 2, &policy_b, 100),
+                      ],
+                      topology: None,
+                      config: SolverConfig::default(),
+                      travelers: vec![TravelerId::new(1), TravelerId::new(2)],
+                      assignments: vec![0, 1],
+                      explored_states: 0,
+                      valid: Vec::new(),
+                  };
+
+                  assert_eq!(layout_hard_constraints_hold(&context), Ok(false));
+                  assert_eq!(partial_hard_constraints_hold(&context), Ok(false));
+                  assert_eq!(relation_satisfied(&context, 0, 0, RoomingRelation::SameRoom), Ok(true));
+                  assert_eq!(relation_satisfied(&context, 0, 1, RoomingRelation::SameRoom), Ok(false));
+                  assert_eq!(relation_satisfied(&context, 0, 1, RoomingRelation::SeparateRoom), Ok(true));
+                  assert_eq!(relation_satisfied(&context, 0, 0, RoomingRelation::SeparateRoom), Ok(false));
+                  assert_eq!(relation_satisfied(&context, 0, 1, RoomingRelation::SameFloor), Ok(false));
+                  assert_eq!(relation_satisfied(&context, 0, 1, RoomingRelation::SameBuilding), Ok(false));
+                  assert_eq!(relation_satisfied(&context, 0, 0, RoomingRelation::Near), Ok(true));
+                  assert_eq!(
+                      relation_satisfied(&context, 0, 1, RoomingRelation::Near),
+                      Err(SolverError::InternalInvariant)
+                  );
+                  assert_eq!(relation_satisfied(&context, 0, 0, RoomingRelation::AdjacentRooms), Ok(false));
+                  assert_eq!(relation_satisfied(&context, 0, 0, RoomingRelation::ConnectedRooms), Ok(false));
+                  assert_eq!(
+                      assignment_of(&context, TravelerId::new(99)),
+                      Err(SolverError::UnknownTraveler(TravelerId::new(99)))
+                  );
+                  context.assignments = vec![0];
+                  assert_eq!(
+                      assignment_of(&context, TravelerId::new(2)),
+                      Err(SolverError::InternalInvariant)
+                  );
+                  assert_eq!(partial_hard_constraints_hold(&context), Ok(true));
+              }
+
+              #[test]
+              fn leaf_paths_cover_rejection_unused_rooms_and_overflow() {
+                  let reject = rule(2, 2);
+                  let party = single_party();
+                  let mut rejected = SearchContext {
+                      party: &party,
+                      check_in: date(),
+                      offers: vec![prepared(10, 1, 1, &reject, 100)],
+                      topology: None,
+                      config: SolverConfig::default(),
+                      travelers: vec![TravelerId::new(1)],
+                      assignments: vec![0],
+                      explored_states: 0,
+                      valid: Vec::new(),
+                  };
+                  assert_eq!(evaluate_leaf(&mut rejected), Ok(()));
+                  assert!(rejected.valid.is_empty());
+
+                  let valid_a = rule(1, 1);
+                  let valid_b = rule(1, 1);
+                  let mut unused = SearchContext {
+                      party: &party,
+                      check_in: date(),
+                      offers: vec![
+                          prepared(10, 1, 1, &valid_a, 100),
+                          prepared(11, 1, 1, &valid_b, 100),
+                      ],
+                      topology: None,
+                      config: SolverConfig::default(),
+                      travelers: vec![TravelerId::new(1)],
+                      assignments: vec![0],
+                      explored_states: 0,
+                      valid: Vec::new(),
+                  };
+                  assert_eq!(evaluate_leaf(&mut unused), Ok(()));
+                  assert_eq!(unused.valid.len(), 1);
+
+                  let two = party_with_intent(
+                      TravelerId::new(1),
+                      TravelerId::new(2),
+                      ConstraintStrength::Must,
+                      RoomingRelation::SeparateRoom,
+                  );
+                  let mut overflow = SearchContext {
+                      party: &two,
+                      check_in: date(),
+                      offers: vec![
+                          prepared(10, 1, 1, &valid_a, i64::MAX),
+                          prepared(11, 1, 1, &valid_b, i64::MAX),
+                      ],
+                      topology: None,
+                      config: SolverConfig::default(),
+                      travelers: vec![TravelerId::new(1), TravelerId::new(2)],
+                      assignments: vec![0, 1],
+                      explored_states: 0,
+                      valid: Vec::new(),
+                  };
+                  assert!(matches!(evaluate_leaf(&mut overflow), Err(SolverError::Price(_))));
+              }
+
+              #[test]
+              fn soft_penalty_prefer_and_avoid_truth_table() {
+                  let policy_a = rule(1, 2);
+                  let policy_b = rule(1, 2);
+                  for (strength, assignments, expected) in [
+                      (ConstraintStrength::Prefer, vec![0, 1], 1),
+                      (ConstraintStrength::Prefer, vec![0, 0], 0),
+                      (ConstraintStrength::Avoid, vec![0, 0], 1),
+                      (ConstraintStrength::Avoid, vec![0, 1], 0),
+                  ] {
+                      let party = party_with_intent(
+                          TravelerId::new(1),
+                          TravelerId::new(2),
+                          strength,
+                          RoomingRelation::SameRoom,
+                      );
+                      let context = SearchContext {
+                          party: &party,
+                          check_in: date(),
+                          offers: vec![
+                              prepared(10, 1, 1, &policy_a, 100),
+                              prepared(11, 1, 1, &policy_b, 100),
+                          ],
+                          topology: None,
+                          config: SolverConfig::default(),
+                          travelers: vec![TravelerId::new(1), TravelerId::new(2)],
+                          assignments,
+                          explored_states: 0,
+                          valid: Vec::new(),
+                      };
+                      assert_eq!(layout_soft_penalty(&context), Ok(expected));
+                  }
+              }
+          }
+          ''',
+          )
+
+          append_once(
+              Path('crates/veyra-cdc/src/checkpoint.rs'),
+              'mod private_transition_coverage',
+              r'''
+          #[cfg(test)]
+          mod private_transition_coverage {
+              use super::*;
+
+              const fn state(commit: u64, end: u64, fingerprint: u64) -> AppliedState {
+                  AppliedState {
+                      commit_lsn: LogSequenceNumber::new(commit),
+                      end_lsn: LogSequenceNumber::new(end),
+                      fingerprint,
+                  }
+              }
+
+              #[test]
+              fn transition_boolean_regions_are_independent() {
+                  assert_eq!(validate_transition(AppliedState::default(), state(10, 11, 1)), Ok(()));
+                  assert!(matches!(
+                      validate_transition(AppliedState::default(), state(10, 9, 1)),
+                      Err(CheckpointError::EndBeforeCommit)
+                  ));
+                  let current = state(10, 20, 1);
+                  assert!(matches!(
+                      validate_transition(current, state(9, 20, 1)),
+                      Err(CheckpointError::Regressed)
+                  ));
+                  assert!(matches!(
+                      validate_transition(current, state(11, 19, 1)),
+                      Err(CheckpointError::Regressed)
+                  ));
+                  assert!(matches!(
+                      validate_transition(current, state(10, 20, 2)),
+                      Err(CheckpointError::ConflictingCommit(_))
+                  ));
+                  assert_eq!(validate_transition(current, current), Ok(()));
+              }
+          }
+          ''',
+          )
+
+          append_once(
+              Path('crates/veyra-cdc/src/journal_v2.rs'),
+              'mod private_journal_coverage',
+              r'''
+          #[cfg(test)]
+          mod private_journal_coverage {
+              use super::*;
+              use std::time::{SystemTime, UNIX_EPOCH};
+
+              fn path(label: &str) -> PathBuf {
+                  let nanos = SystemTime::now()
+                      .duration_since(UNIX_EPOCH)
+                      .unwrap_or_default()
+                      .as_nanos();
+                  std::env::temp_dir().join(format!(
+                      "veyra-journal-private-{label}-{}-{nanos}.bin",
+                      std::process::id()
+                  ))
+              }
+
+              fn batch(commit: u64, value: u8) -> TransactionBatch {
+                  TransactionBatch::try_new(
+                      7,
+                      LogSequenceNumber::new(commit),
+                      LogSequenceNumber::new(commit),
+                      LogSequenceNumber::new(commit + 1),
+                      vec![RowChange::new(
+                          9,
+                          ChangeKind::Insert,
+                          None,
+                          Some(vec![value]),
+                      )],
                   )
-                  .unwrap_or_else(|_| unreachable!()),
-              }
-          }
-
-          #[test]
-          fn priced_entry_points_reject_invalid_stays_before_search() {
-              let party = party(None);
-              let offers = [room(10, 1, 1, 2)];
-              assert_eq!(
-                  solve_priced(&party, date(), 10, 10, &offers, SolverConfig::default()),
-                  Err(SolverError::InvalidStayRange)
-              );
-              let topology = RoomRelationIndex::try_new(&[10], &[])
-                  .unwrap_or_else(|_| unreachable!());
-              assert_eq!(
-                  solve_priced_with_topology(
-                      &party,
-                      date(),
-                      11,
-                      10,
-                      &offers,
-                      &topology,
-                      SolverConfig::default(),
-                  ),
-                  Err(SolverError::InvalidStayRange)
-              );
-          }
-
-          #[test]
-          fn topology_must_cover_every_offered_room() {
-              let topology = RoomRelationIndex::try_new(&[10], &[])
-                  .unwrap_or_else(|_| unreachable!());
-              assert_eq!(
-                  solve_priced_with_topology(
-                      &party(None),
-                      date(),
-                      10,
-                      11,
-                      &[room(11, 1, 1, 2)],
-                      &topology,
-                      SolverConfig::default(),
-                  ),
-                  Err(SolverError::TopologyMissingRoom(11))
-              );
-          }
-
-          #[test]
-          fn every_spatial_relation_executes_true_and_false_paths() {
-              let offers = [room(10, 1, 1, 1), room(11, 2, 2, 1)];
-              let topology = RoomRelationIndex::try_new(
-                  &[10, 11],
-                  &[
-                      RoomTopologyEdge {
-                          left_room_id: 10,
-                          right_room_id: 11,
-                          relation: RoomTopologyRelation::Near,
-                      },
-                      RoomTopologyEdge {
-                          left_room_id: 10,
-                          right_room_id: 11,
-                          relation: RoomTopologyRelation::Adjacent,
-                      },
-                      RoomTopologyEdge {
-                          left_room_id: 10,
-                          right_room_id: 11,
-                          relation: RoomTopologyRelation::Connected,
-                      },
-                  ],
-              )
-              .unwrap_or_else(|_| unreachable!());
-
-              for relation in [
-                  RoomingRelation::Near,
-                  RoomingRelation::AdjacentRooms,
-                  RoomingRelation::ConnectedRooms,
-              ] {
-                  let result = solve_priced_with_topology(
-                      &party(Some(relation)),
-                      date(),
-                      10,
-                      11,
-                      &offers,
-                      &topology,
-                      SolverConfig::default(),
-                  )
-                  .unwrap_or_else(|_| unreachable!());
-                  assert_eq!(result.valid_solution_count, 2);
+                  .unwrap_or_else(|_| unreachable!())
               }
 
-              for relation in [RoomingRelation::SameFloor, RoomingRelation::SameBuilding] {
-                  let result = solve_priced_with_topology(
-                      &party(Some(relation)),
-                      date(),
-                      10,
-                      11,
-                      &offers,
-                      &topology,
-                      SolverConfig::default(),
-                  )
-                  .unwrap_or_else(|_| unreachable!());
-                  assert_eq!(result.valid_solution_count, 0);
+              fn write_record(
+                  path: &Path,
+                  batch: &TransactionBatch,
+                  commit_lsn: u64,
+                  fingerprint: u64,
+              ) -> Result<(), Box<dyn std::error::Error>> {
+                  let payload = encode_batch(batch)?;
+                  let mut header = [0_u8; HEADER_LEN];
+                  header[0..4].copy_from_slice(&MAGIC);
+                  header[4..6].copy_from_slice(&VERSION.to_le_bytes());
+                  header[8..16].copy_from_slice(&(payload.len() as u64).to_le_bytes());
+                  header[16..24].copy_from_slice(&commit_lsn.to_le_bytes());
+                  header[24..32].copy_from_slice(&fingerprint.to_le_bytes());
+                  let mut bytes = Vec::new();
+                  bytes.extend_from_slice(&header);
+                  bytes.extend_from_slice(&payload);
+                  bytes.extend_from_slice(&crc32c(&payload).to_le_bytes());
+                  std::fs::write(path, bytes)?;
+                  Ok(())
               }
 
-              let one_room = [room(10, 1, 1, 2)];
-              let one_topology = RoomRelationIndex::try_new(&[10], &[])
-                  .unwrap_or_else(|_| unreachable!());
-              for relation in [
-                  RoomingRelation::AdjacentRooms,
-                  RoomingRelation::ConnectedRooms,
-              ] {
-                  let result = solve_priced_with_topology(
-                      &party(Some(relation)),
-                      date(),
-                      10,
-                      11,
-                      &one_room,
-                      &one_topology,
-                      SolverConfig::default(),
-                  )
-                  .unwrap_or_else(|_| unreachable!());
-                  assert_eq!(result.valid_solution_count, 0);
+              #[test]
+              fn io_header_tail_and_guard_regions_are_fail_closed() -> Result<(), Box<dyn std::error::Error>> {
+                  let holder = path("holder");
+                  std::fs::write(&holder, b"")?;
+                  let readonly = File::open(&holder)?;
+                  let mut journal = Journal {
+                      path: holder.clone(),
+                      file: readonly,
+                      guard: ReplayGuard::new(),
+                  };
+                  assert!(matches!(journal.append(&batch(10, 1)), Err(JournalError::Io(_))));
+
+                  let missing = path("missing");
+                  let holder_file = File::open(&holder)?;
+                  let mut missing_journal = Journal {
+                      path: missing,
+                      file: holder_file,
+                      guard: ReplayGuard::new(),
+                  };
+                  assert!(matches!(missing_journal.replay(), Err(JournalError::Io(_))));
+                  assert!(matches!(missing_journal.recover(), Err(JournalError::Io(_))));
+
+                  let source = batch(20, 2);
+                  let commit_bad = path("commit-bad");
+                  write_record(&commit_bad, &source, 19, source.fingerprint())?;
+                  let mut file = File::open(&commit_bad)?;
+                  assert!(matches!(scan(&mut file, false), Err(JournalError::HeaderPayloadMismatch(0))));
+
+                  let fingerprint_bad = path("fingerprint-bad");
+                  write_record(
+                      &fingerprint_bad,
+                      &source,
+                      source.commit_lsn().get(),
+                      source.fingerprint().wrapping_add(1),
+                  )?;
+                  let mut file = File::open(&fingerprint_bad)?;
+                  assert!(matches!(scan(&mut file, false), Err(JournalError::HeaderPayloadMismatch(0))));
+
+                  assert!(matches!(tail(Vec::new(), 7, false), Err(JournalError::IncompleteTail(7))));
+                  assert_eq!(tail(Vec::new(), 7, true)?, (Vec::new(), Some(7)));
+
+                  let mut guard = ReplayGuard::new();
+                  assert_eq!(guard.highest_commit_lsn(), LogSequenceNumber::ZERO);
+                  guard.observe(&source)?;
+                  assert_eq!(guard.highest_commit_lsn(), source.commit_lsn());
+
+                  for candidate in [holder, commit_bad, fingerprint_bad] {
+                      let _ = std::fs::remove_file(candidate);
+                  }
+                  Ok(())
               }
           }
-          RS
+          ''',
+          )
 
-          cat > crates/veyra-runtime/tests/publication_error_coverage.rs <<'RS'
-          use veyra_runtime::PublicationError;
+          append_once(
+              Path('crates/veyra-segment/src/lib.rs'),
+              'mod private_segment_coverage',
+              r'''
+          #[cfg(test)]
+          mod private_segment_coverage {
+              use super::*;
+              use std::time::{SystemTime, UNIX_EPOCH};
 
-          #[test]
-          fn publication_error_display_is_stable_for_every_variant() {
-              assert_eq!(
-                  PublicationError::ReadyWithoutPayload.to_string(),
-                  "ReadyWithoutPayload"
-              );
-              assert_eq!(
-                  PublicationError::PayloadRequiresReadyPhase.to_string(),
-                  "PayloadRequiresReadyPhase"
-              );
+              fn path(label: &str) -> PathBuf {
+                  let nanos = SystemTime::now()
+                      .duration_since(UNIX_EPOCH)
+                      .unwrap_or_default()
+                      .as_nanos();
+                  std::env::temp_dir().join(format!(
+                      "veyra-segment-private-{label}-{}-{nanos}.bin",
+                      std::process::id()
+                  ))
+              }
+
+              #[test]
+              fn path_and_parent_sync_boundaries_are_explicit() -> Result<(), Box<dyn std::error::Error>> {
+                  assert!(matches!(temp_path(Path::new("")), Err(SegmentError::MissingFileName)));
+                  let target = path("normal");
+                  let temp = temp_path(&target)?;
+                  assert_ne!(temp, target);
+                  sync_parent(&target)?;
+                  Ok(())
+              }
           }
-          RS
-
-          cat > crates/veyra-segment/tests/error_conversion_coverage.rs <<'RS'
-          use std::error::Error;
-          use std::io;
-
-          use veyra_segment::SegmentError;
-
-          #[test]
-          fn segment_error_conversion_display_and_source_cover_both_families() {
-              let io_error = SegmentError::from(io::Error::new(io::ErrorKind::Other, "boom"));
-              assert!(io_error.to_string().contains("segment I/O error"));
-              assert!(io_error.source().is_some());
-
-              let semantic = SegmentError::InvalidMagic;
-              assert_eq!(semantic.to_string(), "InvalidMagic");
-              assert!(semantic.source().is_none());
-          }
-          RS
-
-          cat >> crates/veyra-server/tests/query_boundary.rs <<'RS'
-
-          #[test]
-          fn single_room_service_entry_and_error_display_are_stable() {
-              use veyra_query::{QueryError, StayQuery};
-              use veyra_ranking::{RankingKind, RankingProfile};
-
-              let initial = PublishedGeneration::<SearchEngine>::try_without_payload(
-                  RuntimeSnapshot::starting(GenerationId::UNPUBLISHED, ProjectionProgress::ZERO),
-              )
-              .unwrap_or_else(|_| unreachable!());
-              let service = QueryService::new(GenerationState::new(initial));
-              let party = party();
-              let request = StayQuery {
-                  destination_id: 1,
-                  check_in_day: 10,
-                  check_out_day: 11,
-                  check_in_date: date(2026, 9, 21),
-                  party: &party,
-                  budget: None,
-                  ranking: RankingProfile::v1(RankingKind::Cheapest),
-                  limit: 10,
-              };
-
-              let error = service
-                  .search(LogSequenceNumber::ZERO, &request)
-                  .err()
-                  .unwrap_or_else(|| unreachable!());
-              assert_eq!(
-                  error,
-                  ServiceQueryError::CannotProve(CannotProveReason::NotReady)
-              );
-              assert_eq!(error.to_string(), "not_ready: CannotProve(NotReady)");
-
-              let unsupported = ServiceQueryError::Query(QueryError::MissingRoomTopology(
-                  veyra_party::RoomingRelation::SameFloor,
-              ));
-              assert_eq!(unsupported.code(), "unsupported_semantics");
-              assert!(unsupported.to_string().starts_with("unsupported_semantics:"));
-
-              let rejected = ServiceQueryError::Query(QueryError::InvalidLimit(0));
-              assert_eq!(rejected.code(), "query_rejected");
-              assert!(rejected.to_string().starts_with("query_rejected:"));
-          }
-          RS
-
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path("crates/veyra-server/Cargo.toml")
-          text = path.read_text()
-          dependency = 'veyra-ranking = { version = "0.1.0", path = "../veyra-ranking" }\n'
-          marker = 'veyra-party = { version = "0.1.0", path = "../veyra-party" }\n'
-          if dependency not in text:
-              if marker not in text:
-                  raise SystemExit("server dev-dependency marker not found")
-              text = text.replace(marker, marker + dependency, 1)
-              path.write_text(text)
+          ''',
+          )
           PY
-
-      - name: Regenerate lockfile and verify full stable workspace
-        run: |
-          cargo generate-lockfile
-          cargo fmt --all
-          cargo fmt --all -- --check
-          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-          cargo test --workspace --all-features --locked
-
-      - name: Verify production coverage in an isolated source copy
-        shell: bash
-        run: |
-          coverage_dir=$(mktemp -d)
-          rsync -a --exclude .git ./ "$coverage_dir/"
-          cd "$coverage_dir"
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          for root in Path("crates").glob("*/src/lib.rs"):
-              text = root.read_text()
-              marker = "#![feature(coverage_attribute)]\n"
-              if not text.startswith(marker):
-                  root.write_text(marker + text)
-
-          for path in Path("crates").glob("*/src/*.rs"):
-              text = path.read_text()
-              text = re.sub(
-                  r"(#\[cfg\(test\)\]\n)(?!#\[coverage\(off\)\]\n)",
-                  r"\1#[coverage(off)]\n",
-                  text,
-              )
-              text = text.replace(
-                  "// coverage: external-postgres-transport\n",
-                  "#[coverage(off)]\n",
-              )
-              path.write_text(text)
-          PY
-          cargo +nightly llvm-cov \
-            --workspace \
-            --all-features \
-            --lib \
-            --tests \
-            --locked \
-            --ignore-filename-regex 'crates/veyra-server/src/main.rs' \
-            --summary-only \
-            --show-missing-lines
-          cargo +nightly llvm-cov report \
-            --ignore-filename-regex 'crates/veyra-server/src/main.rs' \
-            --summary-only \
-            --fail-under-lines 99 \
-            --fail-under-functions 99 \
-            --fail-under-regions 99
-
-      - name: Commit only the fully verified hardening
-        shell: bash
-        run: |
-          git rm .github/workflows/coverage-portability-hardening.yml
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "test: harden portability and production coverage"
-          git push origin HEAD:agent/v1-production-completion
