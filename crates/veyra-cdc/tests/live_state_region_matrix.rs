@@ -45,7 +45,8 @@ fn insert(relation_id: u32, value: &[u8]) -> Vec<u8> {
 }
 
 #[test]
-fn keepalive_and_clean_stop_never_regress_received_progress() -> Result<(), Box<dyn std::error::Error>> {
+fn keepalive_and_clean_stop_never_regress_received_progress()
+-> Result<(), Box<dyn std::error::Error>> {
     let journal_path = path("keepalive-journal");
     let checkpoint_path = path("keepalive-checkpoint");
     let mut processor = DurableTransactionProcessor::open(&journal_path)?;
@@ -102,7 +103,8 @@ fn keepalive_and_clean_stop_never_regress_received_progress() -> Result<(), Box<
 }
 
 #[test]
-fn acknowledgement_never_moves_recovered_progress_backwards() -> Result<(), Box<dyn std::error::Error>> {
+fn acknowledgement_never_moves_recovered_progress_backwards()
+-> Result<(), Box<dyn std::error::Error>> {
     let journal_path = path("ack-journal");
     let checkpoint_path = path("ack-checkpoint");
     let mut processor = DurableTransactionProcessor::open(&journal_path)?;
