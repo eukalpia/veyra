@@ -1,0 +1,196 @@
+name: Add query qualification tests
+
+on:
+  push:
+    branches:
+      - agent/v1-production-completion
+    paths:
+      - .github/workflows/add-query-qualification-tests.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: veyra-v1-branch-writer
+  cancel-in-progress: false
+
+jobs:
+  add-and-verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/v1-production-completion
+          fetch-depth: 0
+      - name: Install pinned Rust
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Add multi-room rejection and ordering matrix
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("crates/veyra-query/tests/multi_room.rs")
+          text = path.read_text()
+          marker = "multi_room_query_qualification_matrix"
+          if marker in text:
+              raise SystemExit(0)
+          if not text.startswith("#![allow("):
+              text = "#![allow(clippy::too_many_lines, clippy::similar_names)]\n\n" + text
+          addition = r'''
+
+fn multi_query<'a>(party: &'a BookingParty) -> MultiRoomStayQuery<'a> {
+    MultiRoomStayQuery {
+        destination_id: 55,
+        check_in_day: 10,
+        check_out_day: 11,
+        check_in_date: date(2026, 9, 21),
+        party,
+        budget: None,
+        profile: SolutionProfile::Cheapest,
+        solver: SolverConfig::default(),
+        limit: 10,
+    }
+}
+
+#[test]
+fn multi_room_query_qualification_matrix() {
+    let party = party();
+    let engine = engine();
+
+    let mut invalid = multi_query(&party);
+    invalid.limit = 0;
+    assert!(engine.search_multi_room(&invalid).is_err());
+
+    let mut invalid = multi_query(&party);
+    invalid.check_out_day = invalid.check_in_day;
+    assert!(engine.search_multi_room(&invalid).is_err());
+
+    let mut invalid = multi_query(&party);
+    invalid.budget = Some(MoneyMicros::signed(-1));
+    assert!(engine.search_multi_room(&invalid).is_err());
+
+    let mut invalid = multi_query(&party);
+    invalid.check_in_day = u32::MAX - 1;
+    invalid.check_out_day = u32::MAX;
+    assert!(engine.search_multi_room(&invalid).is_err());
+
+    let mut invalid = multi_query(&party);
+    invalid.solver = SolverConfig {
+        max_states: 0,
+        max_solutions: 1,
+    };
+    assert!(engine.search_multi_room(&invalid).is_err());
+
+    let mut invalid = multi_query(&party);
+    invalid.solver = SolverConfig {
+        max_states: 1,
+        max_solutions: 1,
+    };
+    assert!(engine.search_multi_room(&invalid).is_err());
+}
+
+#[test]
+fn multi_room_budget_destination_and_limit_are_applied_after_exact_solution() {
+    let party = party();
+    let engine = engine();
+
+    let mut query = multi_query(&party);
+    query.budget = Some(money(219));
+    let result = engine
+        .search_multi_room(&query)
+        .unwrap_or_else(|_| unreachable!());
+    assert!(result.hits.is_empty());
+    assert_eq!(result.explain.properties_considered, 1);
+    assert_eq!(result.explain.properties_solved, 1);
+
+    let mut query = multi_query(&party);
+    query.destination_id = 999;
+    let result = engine
+        .search_multi_room(&query)
+        .unwrap_or_else(|_| unreachable!());
+    assert!(result.hits.is_empty());
+    assert_eq!(result.explain.properties_considered, 0);
+
+    let mut query = multi_query(&party);
+    query.limit = 1;
+    let result = engine
+        .search_multi_room(&query)
+        .unwrap_or_else(|_| unreachable!());
+    assert_eq!(result.hits.len(), 1);
+}
+
+#[test]
+fn multi_room_results_are_deterministic_across_properties() {
+    let mut availability = AvailabilityIndex::new(10, 5, 4).unwrap_or_else(|_| unreachable!());
+    for room_id in 0..4 {
+        for day in 10..15 {
+            availability
+                .set_available(day, room_id, true)
+                .unwrap_or_else(|_| unreachable!());
+        }
+    }
+
+    let first_a = room(0, 100, 500);
+    let first_b = room(1, 120, 0);
+    let mut second_a = room(2, 90, 0);
+    second_a.property_id = 8;
+    let mut second_b = room(3, 90, 0);
+    second_b.property_id = 8;
+    let engine = SearchEngine::try_new(
+        availability,
+        vec![first_a, first_b, second_a, second_b],
+    )
+    .unwrap_or_else(|_| unreachable!());
+
+    let party = party();
+    let result = engine
+        .search_multi_room(&multi_query(&party))
+        .unwrap_or_else(|_| unreachable!());
+    assert_eq!(
+        result
+            .hits
+            .iter()
+            .map(|hit| (hit.property_id, hit.projected_price))
+            .collect::<Vec<_>>(),
+        vec![(8, money(180)), (7, money(220))]
+    );
+}
+
+#[test]
+fn multi_room_candidate_width_fails_closed_instead_of_truncating() {
+    let mut availability = AvailabilityIndex::new(10, 5, 9).unwrap_or_else(|_| unreachable!());
+    let mut rooms = Vec::new();
+    for room_id in 0..9 {
+        for day in 10..15 {
+            availability
+                .set_available(day, room_id, true)
+                .unwrap_or_else(|_| unreachable!());
+        }
+        rooms.push(room(room_id, 100 + i64::from(room_id), 0));
+    }
+    let engine = SearchEngine::try_new(availability, rooms).unwrap_or_else(|_| unreachable!());
+    let party = party();
+    assert!(engine.search_multi_room(&multi_query(&party)).is_err());
+}
+'''
+          path.write_text(text.rstrip() + addition + "\n")
+          PY
+      - name: Format
+        run: cargo fmt --all
+      - name: Verify query tests and clippy
+        run: |
+          cargo test -p veyra-query --all-features --locked
+          cargo clippy -p veyra-query --all-targets --all-features --locked -- -D warnings
+      - name: Commit tests
+        shell: bash
+        run: |
+          git rm .github/workflows/add-query-qualification-tests.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/veyra-query/tests/multi_room.rs
+          git commit -m "test: qualify multi-room query rejection matrix"
+          git fetch origin agent/v1-production-completion
+          git rebase origin/agent/v1-production-completion
+          git push origin HEAD:agent/v1-production-completion
