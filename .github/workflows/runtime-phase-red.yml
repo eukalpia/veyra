@@ -1,0 +1,27 @@
+name: Runtime phase RED gate
+
+on:
+  push:
+    branches:
+      - agent/v1-production-completion
+    paths:
+      - .github/workflows/runtime-phase-red.yml
+      - tools/patches/runtime-phase-red.patch
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prove-regression:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/v1-production-completion
+      - name: Install pinned Rust
+        run: rustup toolchain install 1.97.1 --profile minimal
+      - name: Apply regression test only
+        run: git apply --check tools/patches/runtime-phase-red.patch && git apply tools/patches/runtime-phase-red.patch
+      - name: Prove current implementation fails closed regression
+        run: cargo test -p veyra-runtime malformed_non_ready_snapshot_without_reason_fails_closed --locked -- --exact
