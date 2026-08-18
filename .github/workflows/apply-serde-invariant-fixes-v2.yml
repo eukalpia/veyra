@@ -1,0 +1,198 @@
+name: Apply serde invariant fixes v2
+
+on:
+  push:
+    branches:
+      - agent/v1-production-completion
+    paths:
+      - .github/workflows/apply-serde-invariant-fixes-v2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-serde-invariant-fixes-v2
+  cancel-in-progress: false
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/v1-production-completion
+          fetch-depth: 0
+      - name: Install pinned Rust
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Apply idempotent invariant fixes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import re
+          from pathlib import Path
+
+          def locate(symbol: str) -> Path:
+              paths = [
+                  path
+                  for path in Path("crates").rglob("*.rs")
+                  if f"pub struct {symbol}" in path.read_text()
+              ]
+              if len(paths) != 1:
+                  raise RuntimeError(f"{symbol}: expected one source file, got {paths}")
+              return paths[0]
+
+          def close_brace(text: str, opening: int) -> int:
+              depth = 0
+              for index, char in enumerate(text[opening:], opening):
+                  if char == "{":
+                      depth += 1
+                  elif char == "}":
+                      depth -= 1
+                      if depth == 0:
+                          return index
+              raise RuntimeError("unbalanced braces")
+
+          def bounds(text: str, symbol: str):
+              start = text.index(f"pub struct {symbol}")
+              opening = text.index("{", start)
+              return start, opening, close_brace(text, opening)
+
+          def parse_fields(text: str, opening: int, closing: int):
+              block = text[opening + 1:closing]
+              fields = []
+              current = []
+              depth = 0
+              for char in block:
+                  if char in "<([{":
+                      depth += 1
+                  elif char in ">)]}":
+                      depth -= 1
+                  current.append(char)
+                  if char == "," and depth == 0:
+                      item = "".join(current)
+                      current = []
+                      match = re.search(
+                          r"(?ms)(?:^|\n)\s*(?:#\[[^\n]+\]\s*)*(?:pub(?:\([^)]*\))?\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.+),\s*$",
+                          item,
+                      )
+                      if match:
+                          fields.append((match.group(1), match.group(2).strip()))
+              if not fields:
+                  raise RuntimeError("named fields not parsed")
+              return fields
+
+          def one_lsn(fragment: str, fields):
+              names = [name for name, _ in fields]
+              found = [name for name in names if fragment in name.lower() and "lsn" in name.lower()]
+              if len(found) != 1:
+                  raise RuntimeError(f"{fragment}: expected one LSN field in {names}, got {found}")
+              return found[0]
+
+          def ensure_try_from(symbol: str, wire: str, validation_builder) -> None:
+              path = locate(symbol)
+              text = path.read_text()
+              if f'try_from = "{wire}"' in text and f"struct {wire}" in text:
+                  return
+              start, opening, closing = bounds(text, symbol)
+              fields = parse_fields(text, opening, closing)
+              validation = validation_builder(fields)
+              attribute = f'#[serde(try_from = "{wire}")]\n'
+              text = text[:start] + attribute + text[start:]
+              opening += len(attribute)
+              closing += len(attribute)
+              field_lines = "\n".join(f"    {name}: {ty}," for name, ty in fields)
+              assignments = ",\n            ".join(f"{name}: raw.{name}" for name, _ in fields)
+              implementation = f'''\n\n#[derive(serde::Deserialize)]
+struct {wire} {{
+{field_lines}
+}}
+
+impl TryFrom<{wire}> for {symbol} {{
+    type Error = &'static str;
+
+    fn try_from(raw: {wire}) -> Result<Self, Self::Error> {{
+        {validation}
+        Ok(Self {{
+            {assignments}
+        }})
+    }}
+}}
+'''
+              text = text[:closing + 1] + implementation + text[closing + 1:]
+              path.write_text(text)
+
+          def progress_validation(fields):
+              received = one_lsn("received", fields)
+              durable = one_lsn("durable", fields)
+              applied = one_lsn("applied", fields)
+              published = one_lsn("published", fields)
+              return f'''if !(raw.{published} <= raw.{applied}
+            && raw.{applied} <= raw.{durable}
+            && raw.{durable} <= raw.{received})
+        {{
+            return Err("projection LSNs must satisfy published <= applied <= durable <= received");
+        }}'''
+
+          def transaction_validation(fields):
+              begin = one_lsn("begin", fields)
+              commit = one_lsn("commit", fields)
+              end = one_lsn("end", fields)
+              return f'''if !(raw.{begin} <= raw.{commit} && raw.{commit} <= raw.{end}) {{
+            return Err("transaction LSNs must satisfy begin <= commit <= end");
+        }}'''
+
+          ensure_try_from("ProjectionProgress", "ProjectionProgressWire", progress_validation)
+          ensure_try_from("ProjectedTransaction", "ProjectedTransactionWire", transaction_validation)
+
+          runtime = locate("RuntimeSnapshot")
+          text = runtime.read_text()
+          _, opening, closing = bounds(text, "RuntimeSnapshot")
+          fields = parse_fields(text, opening, closing)
+          phase = [(name, ty) for name, ty in fields if name == "phase"]
+          if len(phase) != 1:
+              raise RuntimeError(f"RuntimeSnapshot phase field not found: {fields}")
+          phase_name, phase_type = phase[0]
+          match = re.search(
+              r"(?m)^\s*(?:#\[[^\n]+\]\s*)*pub(?:\(crate\))?\s+fn\s+can_query\s*\(&self\)\s*->\s*bool\s*\{",
+              text,
+          )
+          if match is None:
+              raise RuntimeError("RuntimeSnapshot::can_query not found")
+          body_open = text.index("{", match.start())
+          body_close = close_brace(text, body_open)
+          guard_marker = f"self.{phase_name} != {phase_type}::Ready"
+          if guard_marker not in text[body_open:body_close]:
+              guard = f'''\n        if self.{phase_name} != {phase_type}::Ready {{
+            return false;
+        }}
+'''
+              text = text[:body_open + 1] + guard + text[body_open + 1:]
+              runtime.write_text(text)
+          PY
+      - name: Synchronize and verify lockfiles
+        run: |
+          cargo generate-lockfile
+          cargo metadata --locked --format-version 1 > /dev/null
+          (cd fuzz && cargo metadata --locked --format-version 1 > /dev/null)
+      - name: Format
+        run: cargo fmt --all
+      - name: Clippy affected crates
+        run: cargo clippy -p veyra-types -p veyra-cdc -p veyra-runtime --all-targets --all-features --locked -- -D warnings
+      - name: Test affected crates
+        run: cargo test -p veyra-types -p veyra-cdc -p veyra-runtime --all-features --locked
+      - name: Commit verified changes
+        shell: bash
+        run: |
+          git rm .github/workflows/apply-serde-invariant-fixes-v2.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock crates
+          if git diff --cached --quiet; then
+            echo "No invariant changes were required"
+            exit 1
+          fi
+          git commit -m "fix: validate serialized runtime and CDC invariants"
+          git push origin HEAD:agent/v1-production-completion
