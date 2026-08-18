@@ -1,0 +1,150 @@
+name: V1 master functional baseline
+
+on:
+  push:
+    branches:
+      - agent/v1-production-completion
+    paths:
+      - .github/workflows/v1-master-functional-baseline.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: v1-master-functional-baseline
+  cancel-in-progress: false
+
+jobs:
+  baseline:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/v1-production-completion
+          fetch-depth: 0
+      - name: Install pinned Rust
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Execute pending idempotent source transformations
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import re
+          import textwrap
+          from pathlib import Path
+
+          workflows = [
+              Path(".github/workflows/apply-serde-invariant-fixes-v2.yml"),
+              Path(".github/workflows/add-query-qualification-tests.yml"),
+              Path(".github/workflows/add-server-boundary-tests.yml"),
+          ]
+
+          for workflow in workflows:
+              if not workflow.exists():
+                  continue
+              content = workflow.read_text()
+              marker = "python3 - <<'PY'\n"
+              start = content.find(marker)
+              if start < 0:
+                  continue
+              start += len(marker)
+              end = content.find("\n          PY", start)
+              if end < 0:
+                  raise RuntimeError(f"unterminated Python transform in {workflow}")
+              script = textwrap.dedent(content[start:end])
+              exec(compile(script, str(workflow), "exec"), {})
+          PY
+      - name: Synchronize lockfile and format
+        run: |
+          cargo generate-lockfile
+          cargo fmt --all
+          cargo metadata --locked --format-version 1 > /dev/null
+          (cd fuzz && cargo metadata --locked --format-version 1 > /dev/null)
+      - name: Verify serialized invariant implementation
+        shell: bash
+        run: |
+          grep -R 'serde(try_from = "ProjectionProgressWire")' crates/veyra-types crates/veyra-runtime
+          grep -R 'serde(try_from = "ProjectedTransactionWire")' crates/veyra-cdc
+          grep -R '::Ready' crates/veyra-runtime/src | grep 'phase' >/dev/null
+      - name: Full workspace clippy
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: Full workspace tests
+        run: cargo test --workspace --all-features --locked
+      - name: Restore read-only source snapshot workflow
+        shell: bash
+        run: |
+          cat > .github/workflows/source-snapshot.yml <<'EOF'
+          name: Source snapshot
+
+          on:
+            push:
+              branches:
+                - agent/m0-foundation-ci
+                - agent/v1-production-completion
+            workflow_dispatch:
+
+          permissions:
+            contents: read
+
+          concurrency:
+            group: source-snapshot-${{ github.ref }}
+            cancel-in-progress: true
+
+          jobs:
+            archive:
+              name: Archive exact branch source
+              runs-on: ubuntu-24.04
+              steps:
+                - uses: actions/checkout@v6
+                - name: Create reproducible source archive
+                  run: git archive --format=zip --output=veyra-source.zip HEAD
+                - name: Upload exact source snapshot
+                  uses: actions/upload-artifact@v4
+                  with:
+                    name: veyra-source-${{ github.sha }}
+                    path: veyra-source.zip
+                    if-no-files-found: error
+          EOF
+      - name: Record functional checkpoint and clean temporary workflows
+        shell: bash
+        run: |
+          mkdir -p docs/ci-checkpoints
+          cat > docs/ci-checkpoints/2026-08-18-v1-functional-baseline.md <<EOF
+          # V1 Functional Baseline
+
+          Verified on commit prepared by this workflow with Rust 1.97.1:
+
+          - complete locked dependency graphs for workspace and fuzz package;
+          - workspace formatting;
+          - clippy for all targets and features with warnings denied;
+          - all workspace tests;
+          - runtime phase admission and serialized LSN ordering guards;
+          - multi-room query rejection and HTTP boundary matrices when their fixtures are present.
+          EOF
+          find .github/workflows -maxdepth 1 -type f \( \
+            -name 'repair-serde-invariant-lockfile.yml' -o \
+            -name 'apply-serde-invariant-fixes.yml' -o \
+            -name 'apply-serde-invariant-fixes-v2.yml' -o \
+            -name 'verify-serde-invariants-green.yml' -o \
+            -name 'stabilize-v1-branch.yml' -o \
+            -name 'add-query-qualification-tests.yml' -o \
+            -name 'add-server-boundary-tests.yml' -o \
+            -name 'materialize-serde-regressions.yml' -o \
+            -name 'runtime-phase-red.yml' -o \
+            -name 'projection-progress-red.yml' -o \
+            -name 'projected-transaction-red.yml' -o \
+            -name 'query-tdd.yml' -o \
+            -name 'v1-master-functional-baseline.yml' \
+          \) -print -delete
+      - name: Commit functional baseline
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "build: establish clean V1 functional baseline"
+          git fetch origin agent/v1-production-completion
+          git rebase origin/agent/v1-production-completion
+          git push origin HEAD:agent/v1-production-completion
