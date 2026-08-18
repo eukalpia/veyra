@@ -1,0 +1,76 @@
+AGGREGATED FILE-LEVEL ZERO-COUNT REGION-ENTRY SEGMENTS
+
+crates/veyra-cdc/src/checkpoint.rs: summary_missed_regions=7, zero_merged_entries=5
+  106:84 | let mut reader = OpenOptions::new().read(true).write(true).open(&self.path)?;
+  107:41 | let file_len = reader.metadata()?.len();
+  111:41 | reader.set_len(complete_len)?;
+  112:31 | reader.sync_data()?;
+  119:43 | reader.read_exact(&mut record)?;
+
+crates/veyra-cdc/src/journal_v2.rs: summary_missed_regions=10, zero_merged_entries=9
+  118:38 | self.file.write_all(&payload)?;
+  119:61 | self.file.write_all(&crc32c(&payload).to_le_bytes())?;
+  141:32 | reader.set_len(len)?;
+  142:31 | reader.sync_data()?;
+  146:37 | if guard.observe(record)? != ReplayDecision::Apply {
+  160:35 | let file_len = file.metadata()?.len();
+  173:37 | file.read_exact(&mut header)?;
+  197:38 | file.read_exact(&mut payload)?;
+  199:34 | file.read_exact(&mut crc)?;
+
+crates/veyra-cdc/src/live.rs: summary_missed_regions=11, zero_merged_entries=0
+
+crates/veyra-cdc/src/pgoutput_v1.rs: summary_missed_regions=1, zero_merged_entries=0
+
+crates/veyra-cdc/src/processor.rs: summary_missed_regions=5, zero_merged_entries=0
+
+crates/veyra-cdc/src/stream.rs: summary_missed_regions=2, zero_merged_entries=0
+
+crates/veyra-occupancy/src/lib.rs: summary_missed_regions=3, zero_merged_entries=2
+  69:91 | let context = OccupancyContext::new(occupants).map_err(OccupancyError::InvalidContext)?;
+  72:47 | .map_err(OccupancyError::CompiledRule)?
+
+crates/veyra-party/src/lib.rs: summary_missed_regions=3, zero_merged_entries=0
+
+crates/veyra-pricing/src/lib.rs: summary_missed_regions=1, zero_merged_entries=1
+  132:94 | let start = usize::try_from(start_i64).map_err(|_| PricingError::OutsidePriceHorizon)?;
+
+crates/veyra-query/src/lib.rs: summary_missed_regions=6, zero_merged_entries=6
+  206:21 | Err(error) => return Err(QueryError::Restrictions(error)),
+  206:38 | Err(error) => return Err(QueryError::Restrictions(error)),
+  274:47 | .map_err(QueryError::Availability)?;
+  321:21 | Err(error) => return Err(QueryError::Restrictions(error)),
+  321:38 | Err(error) => return Err(QueryError::Restrictions(error)),
+  557:68 | .ok_or(QueryError::SolverProfileMissing(query.profile))?;
+
+crates/veyra-ranking/src/lib.rs: summary_missed_regions=1, zero_merged_entries=0
+
+crates/veyra-restrictions/src/lib.rs: summary_missed_regions=4, zero_merged_entries=0
+
+crates/veyra-rules/src/lib.rs: summary_missed_regions=1, zero_merged_entries=0
+
+crates/veyra-segment/src/lib.rs: summary_missed_regions=8, zero_merged_entries=8
+  75:20 | return Err(SegmentError::PayloadTooLarge(payload.len()));
+  196:37 | file.write_all(&encoded)?;
+  197:28 | file.sync_all()?;
+  200:30 | sync_parent(path)?;
+  211:39 | let metadata = file.metadata()?;
+  238:16 | return Ok(());
+  242:27 | File::open(parent)?.sync_all()?;
+  242:39 | File::open(parent)?.sync_all()?;
+
+crates/veyra-server/src/lib.rs: summary_missed_regions=1, zero_merged_entries=1
+  52:53 | .map_err(ServiceQueryError::CannotProve)?;
+
+crates/veyra-solver/src/lib.rs: summary_missed_regions=9, zero_merged_entries=8
+  386:46 | if !layout_hard_constraints_hold(context)? {
+  425:52 | let soft_penalty = layout_soft_penalty(context)?;
+  441:55 | let left = assignment_of(context, intent.left)?;
+  442:57 | let right = assignment_of(context, intent.right)?;
+  510:26 | Ok(topology()?.contains(
+  520:26 | Ok(topology()?.contains(
+  537:55 | let left = assignment_of(context, intent.left)?;
+  538:57 | let right = assignment_of(context, intent.right)?;
+
+crates/veyra-storage/src/lib.rs: summary_missed_regions=2, zero_merged_entries=0
+
