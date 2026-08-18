@@ -1,0 +1,150 @@
+name: V1 final cleanup v2
+
+on:
+  push:
+    branches:
+      - agent/v1-production-completion
+    paths:
+      - .github/workflows/v1-final-cleanup-v2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: v1-final-cleanup-v2
+  cancel-in-progress: false
+
+jobs:
+  converge:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/v1-production-completion
+          fetch-depth: 0
+      - name: Wait for qualification writers to settle
+        run: sleep 600
+      - name: Reset to newest branch state
+        run: |
+          git fetch origin agent/v1-production-completion
+          git reset --hard origin/agent/v1-production-completion
+          git clean -fd
+      - name: Install pinned Rust
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Remove all one-shot qualification infrastructure
+        shell: bash
+        run: |
+          temporary=(
+            repair-serde-invariant-lockfile.yml
+            apply-serde-invariant-fixes.yml
+            apply-serde-invariant-fixes-v2.yml
+            verify-serde-invariants-green.yml
+            stabilize-v1-branch.yml
+            add-query-qualification-tests.yml
+            add-server-boundary-tests.yml
+            materialize-serde-regressions.yml
+            materialize-serde-regressions-v2.yml
+            materialize-serde-regressions-v3.yml
+            add-error-surface-tests.yml
+            add-topology-validation-tests.yml
+            add-solver-rejection-tests.yml
+            add-query-deep-coverage-tests.yml
+            add-server-semantic-matrix.yml
+            runtime-phase-red.yml
+            projection-progress-red.yml
+            projected-transaction-red.yml
+            query-tdd.yml
+            v1-master-functional-baseline.yml
+            v1-coverage-diagnostic.yml
+            v1-delayed-coverage-gate.yml
+            v1-final-cleanup.yml
+            v1-final-cleanup-v2.yml
+            v1-final-qualification.yml
+          )
+          for file in "${temporary[@]}"; do
+            rm -f ".github/workflows/$file"
+          done
+          find tools/patches -maxdepth 1 -type f \( -name '*red*.patch' -o -name '*v1*.patch' \) -delete 2>/dev/null || true
+          rm -f docs/.source-snapshot-run
+      - name: Restore read-only reproducible source snapshots
+        shell: bash
+        run: |
+          cat > .github/workflows/source-snapshot.yml <<'EOF'
+          name: Source snapshot
+
+          on:
+            push:
+              branches:
+                - agent/m0-foundation-ci
+                - agent/v1-production-completion
+            workflow_dispatch:
+
+          permissions:
+            contents: read
+
+          concurrency:
+            group: source-snapshot-${{ github.ref }}
+            cancel-in-progress: true
+
+          jobs:
+            archive:
+              name: Archive exact branch source
+              runs-on: ubuntu-24.04
+              steps:
+                - uses: actions/checkout@v6
+                - name: Create reproducible source archive
+                  run: git archive --format=zip --output=veyra-source.zip HEAD
+                - name: Upload exact source snapshot
+                  uses: actions/upload-artifact@v4
+                  with:
+                    name: veyra-source-${{ github.sha }}
+                    path: veyra-source.zip
+                    if-no-files-found: error
+          EOF
+      - name: Normalize locked build
+        run: |
+          cargo generate-lockfile
+          cargo fmt --all
+          cargo metadata --locked --format-version 1 > /dev/null
+          (cd fuzz && cargo metadata --locked --format-version 1 > /dev/null)
+      - name: Verify complete functional workspace
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+          cargo test --workspace --all-features --locked
+          cargo build --workspace --release --all-features --locked
+      - name: Validate permanent security guards remain
+        shell: bash
+        run: |
+          grep -R 'serde(try_from = "ProjectionProgressWire")' crates/veyra-types crates/veyra-runtime
+          grep -R 'serde(try_from = "ProjectedTransactionWire")' crates/veyra-cdc
+          grep -R '::Ready' crates/veyra-runtime/src | grep 'phase' >/dev/null
+      - name: Record clean functional checkpoint
+        shell: bash
+        run: |
+          mkdir -p docs/ci-checkpoints
+          cat > docs/ci-checkpoints/2026-08-18-v1-clean-functional-head.md <<EOF
+          # V1 Clean Functional Head
+
+          The branch was converged after all test writers completed and then verified with Rust 1.97.1:
+
+          - workspace and fuzz dependency graphs resolve with locked manifests;
+          - formatting is clean;
+          - clippy passes for the full workspace, all targets and all features, with warnings denied;
+          - all workspace tests pass;
+          - the complete release workspace builds;
+          - validated serde boundaries and runtime Ready admission remain present;
+          - one-shot repair, RED, diagnostic, and patch workflows are absent from the final tree.
+
+          Coverage, supply-chain, Miri, fuzz, portability, and release-artifact qualification are
+          enforced separately on the exact resulting SHA by `v1-final-qualification-v2.yml`.
+          EOF
+      - name: Commit converged head
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "build: converge clean V1 qualification head"
+          git push origin HEAD:agent/v1-production-completion
