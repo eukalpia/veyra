@@ -43,14 +43,38 @@ jobs:
           python3 tools/final-hardening/apply.py tests
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('crates/veyra-server/tests/query_success_matrix.rs')
-          text = path.read_text()
+
+          server = Path('crates/veyra-server/tests/query_success_matrix.rs')
+          text = server.read_text()
           old = '.unwrap_err();'
           new = '.err().unwrap_or_else(|| unreachable!());'
           if old in text:
               if text.count(old) != 1:
                   raise SystemExit('server unwrap_err site is not unique')
-              path.write_text(text.replace(old, new, 1))
+              server.write_text(text.replace(old, new, 1))
           elif new not in text:
               raise SystemExit('server error extraction site not found')
+
+          solver = Path('crates/veyra-solver/src/lib.rs')
+          text = solver.read_text()
+          old = """    fn prepared<'a>(
+              room_id: u32,
+              floor: u16,
+              building: u16,
+              policy: &'a CompiledRule,
+              price: i64,
+          ) -> PreparedOffer<'a> {
+          """
+          new = """    fn prepared(
+              room_id: u32,
+              floor: u16,
+              building: u16,
+              policy: &CompiledRule,
+              price: i64,
+          ) -> PreparedOffer<'_> {
+          """
+          if old in text:
+              solver.write_text(text.replace(old, new, 1))
+          elif new not in text:
+              raise SystemExit('private solver prepared helper not found')
           PY
