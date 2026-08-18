@@ -1,0 +1,29 @@
+V3 PRODUCTION COVERAGE SUMMARY
+
+regions: 4960/5035 = 98.51%
+functions: 399/399 = 100.00%
+lines: 3718/3737 = 99.49%
+
+Files with missed production coverage:
+- crates/veyra-cdc/src/checkpoint.rs: missed_regions=7, missed_lines=1
+- crates/veyra-cdc/src/journal_v2.rs: missed_regions=10, missed_lines=0
+- crates/veyra-cdc/src/live.rs: missed_regions=11, missed_lines=5
+- crates/veyra-cdc/src/pgoutput_v1.rs: missed_regions=1, missed_lines=0
+- crates/veyra-cdc/src/processor.rs: missed_regions=5, missed_lines=3
+- crates/veyra-cdc/src/stream.rs: missed_regions=2, missed_lines=1
+- crates/veyra-occupancy/src/lib.rs: missed_regions=3, missed_lines=0
+- crates/veyra-party/src/lib.rs: missed_regions=3, missed_lines=0
+- crates/veyra-pricing/src/lib.rs: missed_regions=1, missed_lines=0
+- crates/veyra-query/src/lib.rs: missed_regions=6, missed_lines=2
+- crates/veyra-ranking/src/lib.rs: missed_regions=1, missed_lines=1
+- crates/veyra-restrictions/src/lib.rs: missed_regions=4, missed_lines=2
+- crates/veyra-rules/src/lib.rs: missed_regions=1, missed_lines=0
+- crates/veyra-segment/src/lib.rs: missed_regions=8, missed_lines=2
+- crates/veyra-server/src/lib.rs: missed_regions=1, missed_lines=0
+- crates/veyra-solver/src/lib.rs: missed_regions=9, missed_lines=0
+- crates/veyra-storage/src/lib.rs: missed_regions=2, missed_lines=2
+
+Uncovered line locations from llvm-cov:
+
+/tmp/tmp.lRVuHOoq47/crates/veyra-query/src/lib.rs: 206, 321
+/tmp/tmp.lRVuHOoq47/crates/veyra-segment/src/lib.rs: 75, 238
