@@ -1,0 +1,140 @@
+name: Coverage region diagnostic once
+
+on:
+  push:
+    branches:
+      - agent/v1-production-completion
+    paths:
+      - .github/workflows/coverage-region-diagnostic-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/v1-production-completion
+          fetch-depth: 0
+      - name: Install coverage toolchain
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt
+          rustup toolchain install nightly --profile minimal --component llvm-tools-preview
+          cargo install cargo-llvm-cov --locked
+      - name: Materialize current hardening candidate
+        shell: bash
+        run: |
+          python3 tools/final-hardening/apply.py transform
+          python3 tools/final-hardening/apply.py tests
+          python3 - <<'PY'
+          from pathlib import Path
+          checkpoint = Path('crates/veyra-cdc/src/checkpoint.rs')
+          text = checkpoint.read_text()
+          replacements = [
+              (
+                  '        assert_eq!(\n            validate_transition(AppliedState::default(), state(10, 11, 1)),\n            Ok(())\n        );',
+                  '        assert!(validate_transition(AppliedState::default(), state(10, 11, 1)).is_ok());',
+              ),
+              (
+                  '        assert_eq!(validate_transition(current, current), Ok(()));',
+                  '        assert!(validate_transition(current, current).is_ok());',
+              ),
+          ]
+          for old, new in replacements:
+              if old in text:
+                  text = text.replace(old, new, 1)
+          checkpoint.write_text(text)
+          PY
+          cargo generate-lockfile
+          cargo fmt --all
+      - name: Export exact zero-count regions
+        shell: bash
+        run: |
+          coverage_dir=$(mktemp -d)
+          rsync -a --exclude .git ./ "$coverage_dir/"
+          cd "$coverage_dir"
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          for root in Path('crates').glob('*/src/lib.rs'):
+              text = root.read_text()
+              marker = '#![feature(coverage_attribute)]\n'
+              if not text.startswith(marker):
+                  root.write_text(marker + text)
+          for path in Path('crates').glob('*/src/*.rs'):
+              text = path.read_text()
+              text = re.sub(
+                  r'(#\[cfg\(test\)\]\n)(?!#\[coverage\(off\)\]\n)',
+                  r'\1#[coverage(off)]\n',
+                  text,
+              )
+              text = text.replace(
+                  '// coverage: external-postgres-transport\n',
+                  '#[coverage(off)]\n',
+              )
+              path.write_text(text)
+          PY
+          cargo +nightly llvm-cov \
+            --workspace --all-features --lib --tests --locked \
+            --ignore-filename-regex 'crates/veyra-server/src/main.rs' \
+            --summary-only >/tmp/coverage-diagnostic-summary.txt
+          cargo +nightly llvm-cov report \
+            --ignore-filename-regex 'crates/veyra-server/src/main.rs' \
+            --json --output-path /tmp/coverage-diagnostic.json
+          python3 - <<'PY'
+          import json
+          from collections import Counter, defaultdict
+          from pathlib import Path
+
+          payload = json.loads(Path('/tmp/coverage-diagnostic.json').read_text())
+          data = payload['data'][0]
+          missing = set()
+          for function in data.get('functions', []):
+              filenames = function.get('filenames', [])
+              for region in function.get('regions', []):
+                  if len(region) < 6 or region[4] != 0:
+                      continue
+                  file_id = region[5]
+                  if not isinstance(file_id, int) or file_id < 0 or file_id >= len(filenames):
+                      continue
+                  filename = filenames[file_id]
+                  if '/crates/' not in filename and not filename.startswith('crates/'):
+                      continue
+                  filename = filename.split('/crates/', 1)[-1]
+                  if not filename.startswith('crates/'):
+                      filename = 'crates/' + filename
+                  missing.add((filename, region[0], region[1], region[2], region[3]))
+
+          grouped = defaultdict(list)
+          for item in sorted(missing):
+              grouped[item[0]].append(item[1:])
+
+          out = []
+          out.append('ZERO-COUNT LLVM REGIONS FOR CURRENT HARDENING CANDIDATE')
+          out.append('')
+          out.append(Path('/tmp/coverage-diagnostic-summary.txt').read_text())
+          out.append('')
+          out.append(f'unique_zero_count_regions={len(missing)}')
+          out.append('')
+          for filename in sorted(grouped, key=lambda name: (-len(grouped[name]), name)):
+              regions = grouped[filename]
+              out.append(f'{filename} missing_regions={len(regions)}')
+              for line, col, end_line, end_col in regions:
+                  out.append(f'  {line}:{col}-{end_line}:{end_col}')
+              out.append('')
+          Path('/tmp/coverage-region-gaps.txt').write_text('\n'.join(out))
+          PY
+      - name: Publish diagnostic only
+        shell: bash
+        run: |
+          git reset --hard HEAD
+          mkdir -p docs/ci-checkpoints
+          cp /tmp/coverage-region-gaps.txt docs/ci-checkpoints/coverage-region-gaps.txt
+          git rm .github/workflows/coverage-region-diagnostic-once.yml
+          git add docs/ci-checkpoints/coverage-region-gaps.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "ci: record exact zero-count coverage regions"
+          git push origin HEAD:agent/v1-production-completion
