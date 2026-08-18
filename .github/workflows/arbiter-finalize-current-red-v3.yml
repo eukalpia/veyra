@@ -1,0 +1,155 @@
+name: Arbiter finalize current red v3
+
+on:
+  push:
+    branches:
+      - agent/v1-production-completion
+    paths:
+      - .github/workflows/arbiter-finalize-current-red-v3.yml
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+  statuses: write
+
+concurrency:
+  group: veyra-final-arbiter-v3
+  cancel-in-progress: false
+
+env:
+  TARGET_BRANCH: agent/v1-production-completion
+  RUST_VERSION: "1.97.1"
+
+jobs:
+  finalize:
+    timeout-minutes: 90
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+      - name: Install pinned Rust
+        run: rustup toolchain install ${{ env.RUST_VERSION }} --profile minimal --component rustfmt --component clippy
+      - name: Normalize mechanics
+        shell: bash
+        run: |
+          cargo fmt --all
+          cargo generate-lockfile
+          cargo metadata --locked --format-version 1 > /dev/null
+          (cd fuzz && cargo metadata --locked --format-version 1 > /dev/null)
+      - name: Apply compiler-guided lint fixes
+        run: >
+          cargo clippy
+          --fix
+          --workspace
+          --all-targets
+          --all-features
+          --locked
+          --allow-dirty
+          --allow-staged
+      - name: Remove all one-shot repair automation and diagnostics
+        shell: bash
+        run: |
+          rm -f .github/workflows/repair-current-red.yml
+          rm -f .github/workflows/repair-current-red-v2.yml
+          rm -f .github/workflows/autofix-current-lints.yml
+          rm -f .github/workflows/materialize-current-baseline.yml
+          rm -f .github/workflows/materialize-current-coverage.yml
+          rm -f .github/workflows/repair-semantic-baseline.yml
+          rm -f .github/workflows/finalize-clean-tree-on-green.yml
+          rm -f .github/workflows/arbiter-finalize-current-red.yml
+          rm -f .github/workflows/arbiter-finalize-current-red-v2.yml
+          rm -rf docs/ci/current-baseline
+          rm -rf docs/ci/current-coverage
+          rm -f docs/.source-snapshot-run
+          git rm .github/workflows/arbiter-finalize-current-red-v3.yml
+      - name: Verify clean semantic baseline before publication
+        shell: bash
+        run: |
+          cargo fmt --all
+          cargo fmt --all -- --check
+          cargo metadata --locked --format-version 1 > /dev/null
+          (cd fuzz && cargo metadata --locked --format-version 1 > /dev/null)
+          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+          cargo test --workspace --all-features --locked
+          RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps --locked
+      - name: Publish one clean candidate commit
+        id: candidate
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "ci: publish clean production qualification candidate"
+            git push origin HEAD:${TARGET_BRANCH}
+          fi
+          CANDIDATE_SHA=$(git rev-parse HEAD)
+          echo "sha=${CANDIDATE_SHA}" >> "$GITHUB_OUTPUT"
+      - name: Wait for push-triggered exact-SHA qualification
+        id: qualification
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+        shell: bash
+        run: |
+          run_id=''
+          run_url=''
+          conclusion=''
+          for attempt in $(seq 1 300); do
+            payload=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?branch=${TARGET_BRANCH}&head_sha=${CANDIDATE_SHA}&per_page=100")
+            run_id=$(jq -r \
+              '.workflow_runs | map(select(.path == ".github/workflows/current-production-qualification.yml")) | sort_by(.created_at) | reverse | .[0].id // empty' \
+              <<<"$payload")
+            if [ -n "$run_id" ]; then
+              status=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" --jq '.status')
+              run_url=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" --jq '.html_url')
+              if [ "$status" = completed ]; then
+                conclusion=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" --jq '.conclusion')
+                break
+              fi
+            fi
+            sleep 15
+          done
+          if [ -z "$run_id" ] || [ -z "$conclusion" ]; then
+            echo "Timed out locating or waiting for exact-SHA qualification" >&2
+            exit 1
+          fi
+          echo "run_id=${run_id}" >> "$GITHUB_OUTPUT"
+          echo "run_url=${run_url}" >> "$GITHUB_OUTPUT"
+          echo "conclusion=${conclusion}" >> "$GITHUB_OUTPUT"
+          if [ "$conclusion" != success ]; then
+            gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs?per_page=100" \
+              --jq '.jobs[] | select(.conclusion != "success" and .conclusion != "skipped") | "- \(.name): \(.conclusion)"' \
+              > /tmp/failed-jobs.txt
+            printf 'Exact-SHA qualification failed for `%s`.\n\nRun: %s\n\n%s\n' \
+              "$CANDIDATE_SHA" "$run_url" "$(cat /tmp/failed-jobs.txt)" \
+              | gh pr comment 3 --repo "$GITHUB_REPOSITORY" --body-file -
+            exit 1
+          fi
+      - name: Require unchanged branch head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+        shell: bash
+        run: |
+          REMOTE_SHA=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${TARGET_BRANCH}" --jq '.object.sha')
+          test "$REMOTE_SHA" = "$CANDIDATE_SHA"
+      - name: Publish verified PR state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+          RUN_URL: ${{ steps.qualification.outputs.run_url }}
+        shell: bash
+        run: |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${CANDIDATE_SHA}" \
+            -f state=success \
+            -f context='v1/arbiter-production-ready' \
+            -f description='Exact-SHA production qualification passed'
+          gh pr ready 3 --repo "$GITHUB_REPOSITORY"
+          printf 'Final arbiter qualification passed.\n\n- Exact SHA: `%s`\n- Qualification: %s\n- Tree: clean; one-shot repair workflows removed\n' \
+            "$CANDIDATE_SHA" "$RUN_URL" \
+            | gh pr comment 3 --repo "$GITHUB_REPOSITORY" --body-file -
