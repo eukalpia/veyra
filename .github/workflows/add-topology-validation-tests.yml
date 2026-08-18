@@ -1,0 +1,193 @@
+name: Add topology validation tests
+
+on:
+  push:
+    branches:
+      - agent/v1-production-completion
+    paths:
+      - .github/workflows/add-topology-validation-tests.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: add-topology-validation-tests
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/v1-production-completion
+          fetch-depth: 0
+      - name: Install pinned Rust
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Generate constructor rejection tests from topology API
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import re
+          from pathlib import Path
+
+          path = Path("crates/veyra-solver/src/topology.rs")
+          text = path.read_text()
+          marker = "generated_topology_validation_matrix"
+          if marker in text:
+              raise SystemExit(0)
+
+          def close(text: str, opening: int) -> int:
+              depth = 0
+              for index, char in enumerate(text[opening:], opening):
+                  if char == "{":
+                      depth += 1
+                  elif char == "}":
+                      depth -= 1
+                      if depth == 0:
+                          return index
+              raise RuntimeError("unbalanced braces")
+
+          structs = []
+          for match in re.finditer(r"pub struct ([A-Za-z_][A-Za-z0-9_]*)\s*\{", text):
+              opening = text.index("{", match.start())
+              closing = close(text, opening)
+              body = text[opening + 1:closing]
+              fields = re.findall(
+                  r"(?m)^\s*pub\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([^,]+),",
+                  body,
+              )
+              structs.append((match.group(1), fields))
+
+          edge_candidates = []
+          for name, fields in structs:
+              lowered = [field.lower() for field, _ in fields]
+              id_fields = [field for field, ty in fields if "room" in field.lower() and re.search(r"u(?:16|32|64|size)", ty)]
+              relation_fields = [(field, ty.strip()) for field, ty in fields if "relation" in field.lower()]
+              if len(id_fields) >= 2 and len(relation_fields) == 1:
+                  edge_candidates.append((name, fields, id_fields, relation_fields[0]))
+          if len(edge_candidates) != 1:
+              raise RuntimeError(f"edge struct not identified: {edge_candidates}")
+          edge_name, edge_fields, id_fields, relation_field = edge_candidates[0]
+          left_field, right_field = id_fields[:2]
+          relation_name, relation_type = relation_field
+
+          enum_match = re.search(rf"pub enum {re.escape(relation_type)}\s*\{{", text)
+          if enum_match is None:
+              raise RuntimeError(f"relation enum {relation_type} not found")
+          enum_open = text.index("{", enum_match.start())
+          enum_close = close(text, enum_open)
+          variants = re.findall(r"(?m)^\s*([A-Za-z_][A-Za-z0-9_]*)\s*,", text[enum_open + 1:enum_close])
+          if not variants:
+              raise RuntimeError("relation variants not found")
+          relation_value = f"{relation_type}::{variants[0]}"
+
+          index_candidates = []
+          for name, _ in structs:
+              impl_match = re.search(rf"impl\s+{re.escape(name)}\s*\{{", text)
+              if impl_match is None:
+                  continue
+              impl_open = text.index("{", impl_match.start())
+              impl_close = close(text, impl_open)
+              impl_body = text[impl_open + 1:impl_close]
+              constructor = re.search(
+                  r"pub fn try_new\s*\((.*?)\)\s*->\s*Result<Self,",
+                  impl_body,
+                  re.S,
+              )
+              if constructor is not None:
+                  index_candidates.append((name, constructor.group(1)))
+          if len(index_candidates) != 1:
+              raise RuntimeError(f"index constructor not identified: {index_candidates}")
+          index_name, signature = index_candidates[0]
+          params = []
+          current = []
+          depth = 0
+          for char in signature:
+              if char in "<([":
+                  depth += 1
+              elif char in ">)]":
+                  depth -= 1
+              if char == "," and depth == 0:
+                  params.append("".join(current).strip())
+                  current = []
+              else:
+                  current.append(char)
+          if "".join(current).strip():
+              params.append("".join(current).strip())
+          params = [param for param in params if "self" not in param]
+          if len(params) != 2:
+              raise RuntimeError(f"unexpected try_new signature: {signature}")
+          param_types = [param.split(":", 1)[1].strip() for param in params]
+
+          def collection(ty: str, values: str, borrowed_values: str):
+              compact = ty.replace(" ", "")
+              if compact.startswith("&["):
+                  return borrowed_values
+              if "Vec<" in compact:
+                  return f"vec![{values}]"
+              if "BTreeSet<" in compact:
+                  return f"[{values}].into_iter().collect()"
+              if "IntoIterator" in compact or compact.startswith("impl"):
+                  return f"[{values}]"
+              return borrowed_values
+
+          def edge(left: int, right: int):
+              assignments = []
+              for field, ty in edge_fields:
+                  if field == left_field:
+                      value = str(left)
+                  elif field == right_field:
+                      value = str(right)
+                  elif field == relation_name:
+                      value = relation_value
+                  elif ty.strip() == "bool":
+                      value = "true"
+                  else:
+                      raise RuntimeError(f"unsupported edge field {field}: {ty}")
+                  assignments.append(f"{field}: {value}")
+              return f"{edge_name} {{ " + ", ".join(assignments) + " }}"
+
+          rooms_valid = collection(param_types[0], "1, 2", "&[1, 2]")
+          rooms_duplicate = collection(param_types[0], "1, 1", "&[1, 1]")
+          edge_self = edge(1, 1)
+          edge_unknown = edge(1, 9)
+          edges_self = collection(param_types[1], edge_self, f"&[{edge_self}]")
+          edges_unknown = collection(param_types[1], edge_unknown, f"&[{edge_unknown}]")
+          edges_empty = collection(param_types[1], "", "&[]")
+
+          module = f'''
+
+#[cfg(test)]
+mod {marker} {{
+    use super::*;
+
+    #[test]
+    fn constructor_rejects_self_edges_unknown_rooms_and_duplicate_room_ids() {{
+        assert!({index_name}::try_new({rooms_valid}, {edges_self}).is_err());
+        assert!({index_name}::try_new({rooms_valid}, {edges_unknown}).is_err());
+        assert!({index_name}::try_new({rooms_duplicate}, {edges_empty}).is_err());
+    }}
+}}
+'''
+          path.write_text(text.rstrip() + module + "\n")
+          PY
+      - name: Format and verify topology
+        run: |
+          cargo fmt --all
+          cargo test -p veyra-solver --all-features --locked
+          cargo clippy -p veyra-solver --all-targets --all-features --locked -- -D warnings
+      - name: Commit tests
+        shell: bash
+        run: |
+          git rm .github/workflows/add-topology-validation-tests.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/veyra-solver/src/topology.rs .github/workflows/add-topology-validation-tests.yml
+          git commit -m "test: qualify topology constructor rejection matrix"
+          git fetch origin agent/v1-production-completion
+          git rebase origin/agent/v1-production-completion
+          git push origin HEAD:agent/v1-production-completion
