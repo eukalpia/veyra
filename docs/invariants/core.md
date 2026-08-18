@@ -10,7 +10,7 @@ This file is the source-of-truth register for semantic correctness invariants. A
 | I4 | Money uses fixed-point integer micros; multi-room pricing uses the actual adult/child occupancy selected by the solver. | `MoneyMicros`, `PriceVector::quote`, `solve_priced`; `priced_solver.rs` |
 | I5 | CTA/CTD/min/max-stay restrictions are checked before a room participates in search. | `CompiledRestrictions::validate_stay` + query tests |
 | I6 | Query-visible runtime status and its immutable payload belong to the same atomic publication. | `PublishedGeneration<T>` + `GenerationState<T>` + runtime generation tests |
-| I7 | `published_lsn <= applied_lsn <= durable_lsn <= received_lsn`. | `ProjectionProgress::try_new` + unit/property tests |
+| I7 | `published_lsn <= applied_lsn <= durable_lsn <= received_lsn`. | `ProjectionProgress::try_new`, validated serde conversion, unit/property/serde tests |
 | I8 | Partially applied PostgreSQL transactions are not projected as committed query state. | CDC transaction/projection boundary tests |
 | I9 | Replayed CDC/projection progress cannot move logical progress backwards. | typed LSN/projection ordering + CDC/projection tests |
 | I10 | Corrupt/unready/stale generations are never admitted as queryable. | runtime fail-closed states + `prove_queryable` / `GenerationState::admit` tests |
@@ -26,6 +26,7 @@ This file is the source-of-truth register for semantic correctness invariants. A
 | I20 | Read-your-writes admission requires `applied_lsn >= minimum_lsn`. | `RuntimeSnapshot::prove_queryable` + `GenerationState::admit` tests |
 | I21 | The typed server query boundary can obtain a `SearchEngine` only from an admitted atomic runtime generation. | `QueryService` + server query-boundary tests |
 | I22 | Operations health remains independent of business-query success. | Axum liveness/readiness handlers remain separate from `QueryService` |
+| I23 | Untrusted serialized values cannot bypass constructor invariants for projection progress, CDC transaction boundaries, or runtime phase/reason coherence. | serde `try_from` wire types for `ProjectionProgress`, `TransactionBatch`, and `RuntimeSnapshot`; positive and negative serde regressions |
 
 ## Ordering and read-your-writes proof
 
@@ -35,7 +36,30 @@ The executable projection ordering invariant is:
 published <= applied <= durable <= received
 ```
 
-Construction of invalid `ProjectionProgress` values is rejected. Query admission also rejects a caller's `minimum_lsn` when it is newer than the applied projection instead of pretending read-your-writes consistency.
+Construction and deserialization of invalid `ProjectionProgress` values are rejected. Query admission also rejects a caller's `minimum_lsn` when it is newer than the applied projection instead of pretending read-your-writes consistency.
+
+A complete decoded CDC transaction additionally satisfies:
+
+```text
+final_lsn <= commit_lsn <= end_lsn
+```
+
+The same validation path is used for constructor calls and deserialization, so a JSON or persisted representation cannot create a transaction state that normal code could not construct.
+
+## Serialized trust boundary
+
+Serde input is untrusted input. Types with cross-field invariants deserialize into private wire structures first and then enter the same validated construction path used by normal code.
+
+The enforced runtime phase/reason combinations are:
+
+```text
+Ready      => cannot_prove is None
+Starting   => cannot_prove is Some(...)
+Degraded   => cannot_prove is Some(...)
+Failed     => cannot_prove is Some(...)
+```
+
+This prevents a serialized `Ready` snapshot from carrying a hidden refusal reason and prevents a non-ready snapshot from accidentally appearing queryable because its fail-closed reason is absent.
 
 ## Exact multi-room bounds
 
